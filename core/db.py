@@ -304,6 +304,70 @@ def set_habit_log(habit_id, day, done, is_minimum=False):
     conn.close()
 
 
+
+# ---------------------------------------------------------------------------
+# Calendar events (local cache of Google Calendar)
+# ---------------------------------------------------------------------------
+
+# "Which events belong to this day?" is used by both functions below, so it
+# lives in one place. Timed events: the date part of `start` matches.
+# All-day events: Google's end date is EXCLUSIVE (a one-day event on the 29th
+# has end = the 30th), so the event covers `day` if start <= day < end.
+_EVENTS_ON_DAY = """(all_day = 0 AND substr(start, 1, 10) = :day)
+                    OR (all_day = 1 AND start <= :day AND "end" > :day)"""
+
+
+def replace_events_for_day(day, events):
+    """Swap the cached events for one day with a fresh list from Google.
+
+    Delete-then-insert (instead of only inserting) means an event you deleted
+    in Google Calendar also disappears here. Both steps run in one transaction:
+    if anything fails, neither happens, so the cache is never half-updated.
+    """
+    conn = get_connection()
+    with conn:  # `with conn` = commit if everything worked, roll back if not
+        conn.execute(f"DELETE FROM events WHERE {_EVENTS_ON_DAY}", {"day": day.isoformat()})
+        conn.executemany(
+            """INSERT OR REPLACE INTO events (id, title, start, "end", all_day, synced_at)
+               VALUES (:id, :title, :start, :end, :all_day, :synced_at)""",
+            [{**e, "synced_at": now_str()} for e in events],
+        )
+    conn.close()
+
+
+def get_events_for_day(day):
+    """Cached events for one day: all-day ones first, then by start time."""
+    conn = get_connection()
+    rows = conn.execute(
+        f"SELECT * FROM events WHERE {_EVENTS_ON_DAY} ORDER BY all_day DESC, start",
+        {"day": day.isoformat()},
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Settings (tiny key/value store)
+# ---------------------------------------------------------------------------
+
+def get_setting(key, default=None):
+    conn = get_connection()
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    conn.close()
+    return row["value"] if row else default
+
+
+def set_setting(key, value):
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO settings (key, value) VALUES (?, ?)
+           ON CONFLICT (key) DO UPDATE SET value = excluded.value""",
+        (key, value),
+    )
+    conn.commit()
+    conn.close()
+
+
 if __name__ == "__main__":
     # Lets you run `python -m core.db` to create the database and peek inside.
     init_db()
