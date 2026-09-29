@@ -7,6 +7,7 @@ the data is stored. If you ever change the database, you only touch this file.
 """
 
 import sqlite3
+from datetime import date, datetime
 from pathlib import Path
 
 # The database is a single file. Path(__file__) is this file (core/db.py),
@@ -106,6 +107,125 @@ def seed_habits(conn):
         "INSERT OR IGNORE INTO habits (name, minimum_version, target_per_week) VALUES (?, ?, ?)",
         SEED_HABITS,
     )
+
+
+
+# ---------------------------------------------------------------------------
+# Tasks
+# ---------------------------------------------------------------------------
+
+PRIORITIES = ["High", "Med", "Low"]
+TAGS = ["college", "internship", "personal", "research"]
+
+
+def now_str():
+    """Current local time as text. SQLite has no real date type, and this
+    'YYYY-MM-DD HH:MM:SS' format sorts correctly as plain text."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def add_task(title, priority="Med", due_date=None, tag="personal", planned_minutes=None):
+    """Insert a new task. due_date is a datetime.date or None."""
+    conn = get_connection()
+    # The ? placeholders let sqlite3 insert values safely.
+    # Never build SQL with f-strings: a title like  it's  would break it.
+    conn.execute(
+        """INSERT INTO tasks (title, priority, due_date, tag, created_at, planned_minutes)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (title, priority, due_date.isoformat() if due_date else None, tag, now_str(), planned_minutes),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_open_tasks():
+    """All unfinished tasks: most urgent due date first, then High > Med > Low."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM tasks
+           WHERE status = 'todo'
+           ORDER BY
+             due_date IS NULL,  -- tasks with no due date go last (FALSE=0 sorts first)
+             due_date,
+             CASE priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END"""
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_closed_tasks(limit=20):
+    """Recently finished or dropped tasks, newest first."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM tasks
+           WHERE status IN ('done', 'dropped')
+           ORDER BY completed_at DESC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def complete_task(task_id, actual_minutes=None):
+    """Mark a task done and record how long it really took."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE tasks SET status = 'done', completed_at = ?, actual_minutes = ? WHERE id = ?",
+        (now_str(), actual_minutes, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def drop_task(task_id):
+    """Give up on a task. We keep the row (instead of deleting it) because
+    'what did I drop, and after how many postponements?' is useful data later."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE tasks SET status = 'dropped', completed_at = ? WHERE id = ?",
+        (now_str(), task_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def reopen_task(task_id):
+    """Undo a Done/Drop click that was a mistake."""
+    conn = get_connection()
+    conn.execute(
+        "UPDATE tasks SET status = 'todo', completed_at = NULL, actual_minutes = NULL WHERE id = ?",
+        (task_id,),
+    )
+    conn.commit()
+    conn.close()
+
+
+def roll_over_tasks(today=None):
+    """Move unfinished, overdue tasks to today and count each missed day as one postponement.
+
+    Example: a task due Monday, still open on Thursday, gets due_date = Thursday
+    and times_postponed += 3 (Tue, Wed, Thu). Counting days, not app openings,
+    means the number is the same whether or not you opened the app that week.
+
+    Running this many times a day is harmless: after the first run the task
+    is due today, so it no longer matches "due_date < today".
+    Tasks with no due date are never postponed, because they had no deadline to miss.
+    """
+    today = (today or date.today()).isoformat()
+    conn = get_connection()
+    # julianday() turns a date into a day number, so subtracting gives days between.
+    cur = conn.execute(
+        """UPDATE tasks
+           SET times_postponed = times_postponed
+                                 + CAST(julianday(?) - julianday(due_date) AS INTEGER),
+               due_date = ?
+           WHERE status = 'todo' AND due_date IS NOT NULL AND due_date < ?""",
+        (today, today, today),
+    )
+    conn.commit()
+    conn.close()
+    return cur.rowcount  # how many tasks were rolled over
 
 
 if __name__ == "__main__":

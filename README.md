@@ -26,6 +26,7 @@ Then open http://localhost:8501 in your browser.
 |------|---------------|
 | `app.py` | Entry point. Creates the database, shows the home screen. |
 | `pages/` | One file per page. Streamlit adds each one to the sidebar. |
+| `pages/2_To-do.py` | To-do list: add, finish, drop, undo; postponement warnings. |
 | `core/db.py` | All database code: creating tables and reading/writing data. |
 | `core/gcal.py` | Google Calendar sync *(Step 4)* |
 | `core/analytics.py` | Plan vs actual, streaks, insights *(Phase 4)* |
@@ -35,7 +36,7 @@ Then open http://localhost:8501 in your browser.
 ## Progress
 
 - [x] Phase 1 · Step 1 — skeleton + database
-- [ ] Phase 1 · Step 2 — to-do list
+- [x] Phase 1 · Step 2 — to-do list
 - [ ] Phase 1 · Step 3 — habit tracker
 - [ ] Phase 1 · Step 4 — Google Calendar sync
 - [ ] Phase 1 · Step 5 — Today page

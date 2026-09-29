@@ -17,7 +17,7 @@ st.set_page_config(page_title="Productivity", layout="wide")
 db.init_db()
 
 st.title("My Productivity App")
-st.write("Step 1 works: the database is ready. Pages will appear in the sidebar as we build them.")
+st.write("Use the sidebar to open a page. More pages appear as we build them.")
 
 # Quick sanity check so you can see the seed habits made it into the database.
 conn = db.get_connection()
