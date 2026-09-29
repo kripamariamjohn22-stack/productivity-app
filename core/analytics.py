@@ -109,3 +109,19 @@ def attendance_status(attended, missed, target=75):
         return {"percent": percent, "can_miss": 0, "must_attend": None}
     # -(-a // b) is a whole-number way to round UP (ceil) a / b.
     return {"percent": percent, "can_miss": 0, "must_attend": -(-(-slack) // (100 - target))}
+
+
+def countdown(due_date, today=None):
+    """How far away a deadline is, as (days_left, text).
+    days_left is negative when overdue. due_date is 'YYYY-MM-DD' text or None."""
+    if not due_date:
+        return None, "no date"
+    today = today or date.today()
+    days = (date.fromisoformat(due_date) - today).days
+    if days < 0:
+        return days, f"overdue by {-days} day(s)"
+    if days == 0:
+        return days, "today"
+    if days == 1:
+        return days, "tomorrow"
+    return days, f"in {days} days"

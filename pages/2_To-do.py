@@ -10,7 +10,7 @@ from datetime import date
 
 import streamlit as st
 
-from core import db
+from core import analytics, db
 
 st.set_page_config(page_title="To-do", layout="wide")
 db.init_db()  # in case this page is opened directly before the home page
@@ -35,11 +35,21 @@ with st.form("add_task", clear_on_submit=True):
     tag = col2.selectbox("Tag", db.TAGS)
     due = col3.date_input("Due date", value=date.today())
     planned = col4.number_input("Planned minutes", min_value=0, step=15, value=30)
-    no_due = st.checkbox("No due date")
+    col5, col6, col7 = st.columns([1, 1, 2])
+    task_type = col5.selectbox("Type", db.TASK_TYPES, format_func=str.capitalize)
+    # Subject is optional: None shows as "—". It's mainly for assignments/exams.
+    subject_names = {s["id"]: s["name"] for s in db.get_subjects_with_counts()}
+    subject_id = col6.selectbox(
+        "Subject", [None, *subject_names],
+        format_func=lambda sid: "—" if sid is None else subject_names[sid],
+    )
+    no_due = col7.checkbox("No due date")
 
     if st.form_submit_button("Add task"):
         if not title.strip():
             st.error("Give the task a title.")
+        elif task_type != "task" and no_due:
+            st.error("Assignments and exams need a date.")
         else:
             db.add_task(
                 title.strip(),
@@ -47,6 +57,8 @@ with st.form("add_task", clear_on_submit=True):
                 due_date=None if no_due else due,
                 tag=tag,
                 planned_minutes=planned or None,  # 0 means "didn't plan"
+                type=task_type,
+                subject_id=subject_id,
             )
             st.success(f"Added: {title.strip()}")
 
@@ -58,21 +70,28 @@ open_tasks = db.get_open_tasks()
 if not open_tasks:
     st.write("Nothing to do. 🎉")
 
-today = date.today().isoformat()
+TYPE_LABELS = {"task": "", "assignment": "📝 Assignment · ", "exam": "📖 Exam · "}
+
 for task in open_tasks:
     # Every widget needs a unique key, otherwise Streamlit can't tell the
     # "Done" button of task 3 apart from the "Done" button of task 7.
     tid = task["id"]
     info, minutes_col, done_col, drop_col = st.columns([6, 2, 1, 1])
 
-    due_text = task["due_date"] or "no due date"
-    if task["due_date"] == today:
-        due_text = "today"
     planned_text = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
+    subject_text = f" · {task['subject']}" if task["subject"] else ""
+    days_left, when = analytics.countdown(task["due_date"])
     info.markdown(
         f"**{task['title']}**  \n"
-        f"{task['priority']} · {task['tag']} · due {due_text}{planned_text}"
+        f"{TYPE_LABELS[task['type']]}{task['priority']} · {task['tag']}{subject_text}"
+        f" · due {when}{planned_text}"
     )
+    # Deadlines get a coloured note when they're close or already missed.
+    if task["type"] != "task" and days_left is not None:
+        if days_left < 0:
+            info.error(f"{task['type'].capitalize()} overdue by {-days_left} day(s)!")
+        elif days_left <= 2:
+            info.warning(f"{task['type'].capitalize()} {when}!")
     if task["times_postponed"] >= 3:
         info.warning(f"Postponed {task['times_postponed']}x — break it down or drop it?")
     elif task["times_postponed"] > 0:

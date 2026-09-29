@@ -57,8 +57,8 @@ The app notices and simply opens the browser login again. To stop this, go to **
 |------|---------------|
 | `app.py` | Entry point. Creates the database and lists the pages (Today opens first). |
 | `pages/` | One file per page. A new page must also be added to the list in `app.py`. |
-| `pages/1_Today.py` | Today: sync button, calendar timeline with a "now" line, today's tasks and habits. |
-| `pages/2_To-do.py` | To-do list: add, finish, drop, undo; postponement warnings. |
+| `pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits. |
+| `pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings and countdowns. |
 | `pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
 | `pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
@@ -77,4 +77,5 @@ The app notices and simply opens the browser login again. To stop this, go to **
 - [x] Phase 1 · Step 5 — Today page
 - [x] Phase 2 · Step 1 — attendance tracker
 - [x] Phase 2 · Step 2 — timetable (on Today page)
-- [ ] Phase 2 · Step 3 — assignments & exams with countdowns
+- [x] Phase 2 · Step 3 — assignments & exams with countdowns
+- [ ] Phase 3 — meeting notes

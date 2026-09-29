@@ -144,6 +144,12 @@ MIGRATIONS = [
     #    so a double lab (two slots, same subject, same day) is tracked per slot.
     #    SET NULL: deleting a slot keeps the attendance history.
     "ALTER TABLE attendance ADD COLUMN slot_id INTEGER REFERENCES timetable(id) ON DELETE SET NULL",
+    # 2. Phase 2 step 3: assignments and exams live in the tasks table too.
+    #    DEFAULT 'task' means every task you already have becomes a normal task.
+    """ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'task'
+       CHECK (type IN ('task', 'assignment', 'exam'))""",
+    # 3. Optional link from an assignment/exam to its subject.
+    "ALTER TABLE tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL",
 ]
 
 
@@ -186,30 +192,40 @@ def now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-def add_task(title, priority="Med", due_date=None, tag="personal", planned_minutes=None):
-    """Insert a new task. due_date is a datetime.date or None."""
+TASK_TYPES = ["task", "assignment", "exam"]
+
+
+def add_task(title, priority="Med", due_date=None, tag="personal", planned_minutes=None,
+             type="task", subject_id=None):
+    """Insert a new task. due_date is a datetime.date or None.
+    type is 'task', 'assignment' or 'exam'; subject_id is optional."""
     conn = get_connection()
     # The ? placeholders let sqlite3 insert values safely.
     # Never build SQL with f-strings: a title like  it's  would break it.
     conn.execute(
-        """INSERT INTO tasks (title, priority, due_date, tag, created_at, planned_minutes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (title, priority, due_date.isoformat() if due_date else None, tag, now_str(), planned_minutes),
+        """INSERT INTO tasks (title, priority, due_date, tag, created_at, planned_minutes,
+                              type, subject_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (title, priority, due_date.isoformat() if due_date else None, tag, now_str(),
+         planned_minutes, type, subject_id),
     )
     conn.commit()
     conn.close()
 
 
 def get_open_tasks():
-    """All unfinished tasks: most urgent due date first, then High > Med > Low."""
+    """All unfinished tasks: most urgent due date first, then High > Med > Low.
+    The LEFT JOIN adds the subject name (NULL for tasks without a subject)."""
     conn = get_connection()
     rows = conn.execute(
-        """SELECT * FROM tasks
-           WHERE status = 'todo'
+        """SELECT t.*, s.name AS subject
+           FROM tasks t
+           LEFT JOIN subjects s ON s.id = t.subject_id
+           WHERE t.status = 'todo'
            ORDER BY
-             due_date IS NULL,  -- tasks with no due date go last (FALSE=0 sorts first)
-             due_date,
-             CASE priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END"""
+             t.due_date IS NULL,  -- tasks with no due date go last (FALSE=0 sorts first)
+             t.due_date,
+             CASE t.priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END"""
     ).fetchall()
     conn.close()
     return rows
@@ -230,16 +246,36 @@ def get_closed_tasks(limit=20):
 
 
 def get_tasks_for_day(day):
-    """Tasks that belong on one day's plan: still open and due that day,
-    or finished that day (so you can see what you already got done)."""
+    """Plain tasks that belong on one day's plan: still open and due that day,
+    or finished that day (so you can see what you already got done).
+    Assignments and exams are left out: the Today page shows them under Deadlines."""
     conn = get_connection()
     rows = conn.execute(
         """SELECT * FROM tasks
-           WHERE (status = 'todo' AND due_date = :day)
-              OR (status = 'done' AND substr(completed_at, 1, 10) = :day)
+           WHERE type = 'task'
+             AND ((status = 'todo' AND due_date = :day)
+                  OR (status = 'done' AND substr(completed_at, 1, 10) = :day))
            ORDER BY status DESC,  -- 'todo' sorts after 'done' alphabetically, so DESC puts open ones first
                     CASE priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END""",
         {"day": day.isoformat()},
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_upcoming_deadlines(today=None, days=14):
+    """Open assignments and exams due within `days` days, plus any overdue ones."""
+    today = today or date.today()
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT t.*, s.name AS subject
+           FROM tasks t
+           LEFT JOIN subjects s ON s.id = t.subject_id
+           WHERE t.status = 'todo'
+             AND t.type IN ('assignment', 'exam')
+             AND t.due_date <= date(:today, '+' || :days || ' days')
+           ORDER BY t.due_date""",
+        {"today": today.isoformat(), "days": days},
     ).fetchall()
     conn.close()
     return rows
@@ -289,6 +325,8 @@ def roll_over_tasks(today=None):
     Running this many times a day is harmless: after the first run the task
     is due today, so it no longer matches "due_date < today".
     Tasks with no due date are never postponed, because they had no deadline to miss.
+    Assignments and exams are never rolled over: their dates are set by college,
+    so moving them would hide that you're late. They show "overdue" instead.
     """
     today = (today or date.today()).isoformat()
     conn = get_connection()
@@ -298,7 +336,8 @@ def roll_over_tasks(today=None):
            SET times_postponed = times_postponed
                                  + CAST(julianday(?) - julianday(due_date) AS INTEGER),
                due_date = ?
-           WHERE status = 'todo' AND due_date IS NOT NULL AND due_date < ?""",
+           WHERE status = 'todo' AND due_date IS NOT NULL AND due_date < ?
+             AND type = 'task'  -- deadlines and exam dates are fixed: they never roll over""",
         (today, today, today),
     )
     conn.commit()

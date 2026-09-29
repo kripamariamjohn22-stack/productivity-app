@@ -3,15 +3,15 @@ Today page: calendar events, today's tasks and habits in one place.
 
 Calendar events and timetable classes have times, so they form a timeline
 with a "now" line.
-Tasks and habits don't have times, so they sit in an "Anytime today" block
-underneath, where you can tick them off without leaving the page.
+Below it: assignments/exams coming up soon, then tasks and habits (which
+don't have times) in an "Anytime today" block you can tick off right here.
 """
 
 from datetime import date, datetime, time
 
 import streamlit as st
 
-from core import db, gcal
+from core import analytics, db, gcal
 
 db.init_db()
 today = date.today()
@@ -120,6 +120,29 @@ if not now_shown and timeline:
     st.markdown(f"🔴 **now · {now:%H:%M}** · nothing else scheduled today")
 if not timeline and not events:
     st.write("No calendar events or classes today (or not synced yet).")
+
+# ---------------------------------------------------------------------------
+# Deadlines: assignments and exams in the next 7 days (and overdue ones)
+# ---------------------------------------------------------------------------
+deadlines = db.get_upcoming_deadlines(today, days=7)
+if deadlines:
+    st.subheader("Deadlines")
+for d in deadlines:
+    days_left, when = analytics.countdown(d["due_date"], today)
+    icon = "📖" if d["type"] == "exam" else "📝"
+    subject = f" · {d['subject']}" if d["subject"] else ""
+    line = f"{icon} **{d['title']}**{subject} · {when}"
+    text_col, done_col = st.columns([7, 1])
+    # Colour by urgency: red = missed or today, yellow = within 2 days.
+    if days_left <= 0:
+        text_col.error(line)
+    elif days_left <= 2:
+        text_col.warning(line)
+    else:
+        text_col.markdown(line)
+    if done_col.button("Done", key=f"deadline_done_{d['id']}"):
+        db.complete_task(d["id"])
+        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Anytime today: tasks
