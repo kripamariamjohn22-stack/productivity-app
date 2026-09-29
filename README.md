@@ -60,9 +60,10 @@ The app notices and simply opens the browser login again. To stop this, go to **
 | `pages/1_Today.py` | Today: sync button, calendar timeline with a "now" line, today's tasks and habits. |
 | `pages/2_To-do.py` | To-do list: add, finish, drop, undo; postponement warnings. |
 | `pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
+| `pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `core/db.py` | All database code: creating tables and reading/writing data. |
 | `core/gcal.py` | Google login + reading today's events into the database. Test with `python -m core.gcal`. |
-| `core/analytics.py` | Number crunching: habit streaks and heatmap grid now, insights in Phase 4. |
+| `core/analytics.py` | Number crunching: habit streaks, heatmap grid, attendance maths; insights in Phase 4. |
 | `data/app.db` | The SQLite database. Created automatically. **Not in git.** |
 | `credentials.json` / `token.json` | Google login files. **Never commit these.** |
 
@@ -73,4 +74,6 @@ The app notices and simply opens the browser login again. To stop this, go to **
 - [x] Phase 1 · Step 3 — habit tracker
 - [x] Phase 1 · Step 4 — Google Calendar sync
 - [x] Phase 1 · Step 5 — Today page
-- [ ] Phase 2 — college features (attendance, timetable, assignments)
+- [x] Phase 2 · Step 1 — attendance tracker
+- [ ] Phase 2 · Step 2 — timetable (on Today page)
+- [ ] Phase 2 · Step 3 — assignments & exams with countdowns

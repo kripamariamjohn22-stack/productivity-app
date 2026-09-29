@@ -81,10 +81,32 @@ def init_db():
         );
 
         -- Tiny key/value store for app bookkeeping,
-        -- e.g. "last date we rolled over unfinished tasks".
+        -- e.g. the time of the last calendar sync.
         CREATE TABLE IF NOT EXISTS settings (
             key    TEXT PRIMARY KEY,
             value  TEXT
+        );
+
+        -- Phase 2 ---------------------------------------------------------
+
+        -- base_attended / base_missed = classes from BEFORE you started using
+        -- the app, so a subject added mid-semester still shows the right %.
+        CREATE TABLE IF NOT EXISTS subjects (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            name           TEXT NOT NULL UNIQUE,
+            base_attended  INTEGER NOT NULL DEFAULT 0,
+            base_missed    INTEGER NOT NULL DEFAULT 0,
+            active         INTEGER NOT NULL DEFAULT 1
+        );
+
+        -- One row per class. No UNIQUE on (subject, date) on purpose:
+        -- a double lab period is two classes on the same day.
+        CREATE TABLE IF NOT EXISTS attendance (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            date        TEXT NOT NULL,
+            status      TEXT NOT NULL CHECK (status IN ('attended', 'missed')),
+            logged_at   TEXT NOT NULL
         );
         """
     )
@@ -380,6 +402,80 @@ def set_setting(key, value):
            ON CONFLICT (key) DO UPDATE SET value = excluded.value""",
         (key, value),
     )
+    conn.commit()
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Attendance
+# ---------------------------------------------------------------------------
+
+def add_subject(name, base_attended=0, base_missed=0):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO subjects (name, base_attended, base_missed) VALUES (?, ?, ?)",
+        (name, base_attended, base_missed),
+    )
+    conn.commit()
+    conn.close()
+
+
+def archive_subject(subject_id):
+    """Hide a subject at the end of the semester; its history stays."""
+    conn = get_connection()
+    conn.execute("UPDATE subjects SET active = 0 WHERE id = ?", (subject_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_subjects_with_counts():
+    """Every active subject with its total attended and missed classes.
+
+    LEFT JOIN keeps subjects that have no attendance rows yet (a plain JOIN
+    would drop them). GROUP BY squashes each subject's rows into one line.
+    In SQLite, (status = 'attended') is 1 or 0, so SUM() counts the matches.
+    COALESCE(x, 0) turns "no rows at all" (NULL) into 0.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT s.id, s.name,
+                  s.base_attended + COALESCE(SUM(a.status = 'attended'), 0) AS attended,
+                  s.base_missed   + COALESCE(SUM(a.status = 'missed'), 0)   AS missed
+           FROM subjects s
+           LEFT JOIN attendance a ON a.subject_id = s.id
+           WHERE s.active = 1
+           GROUP BY s.id
+           ORDER BY s.name"""
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def log_class(subject_id, day, status):
+    """Record one class as 'attended' or 'missed'."""
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO attendance (subject_id, date, status, logged_at) VALUES (?, ?, ?, ?)",
+        (subject_id, day.isoformat(), status, now_str()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_last_class(subject_id):
+    """The most recently logged class for a subject (or None), for the Undo button."""
+    conn = get_connection()
+    row = conn.execute(
+        "SELECT * FROM attendance WHERE subject_id = ? ORDER BY id DESC LIMIT 1",
+        (subject_id,),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def delete_class(attendance_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM attendance WHERE id = ?", (attendance_id,))
     conn.commit()
     conn.close()
 

@@ -1,5 +1,5 @@
 """
-analytics.py — turns raw rows into numbers: streaks now, insights in Phase 4.
+analytics.py — turns raw rows into numbers: streaks, attendance maths, insights (Phase 4).
 
 Nothing in here touches the database or Streamlit. Functions take plain Python
 data in and give plain data back, which makes them easy to test on their own.
@@ -80,3 +80,32 @@ def heatmap_grid(logs, today=None, weeks=26):
                 values.loc[weekday, monday] = 2
                 labels.loc[weekday, monday] = f"{day:%a %d %b}: done"
     return values, labels
+
+
+def attendance_status(attended, missed, target=75):
+    """Current % and how much slack you have, for one subject.
+
+    All maths is done with whole numbers (no floats), so there are no
+    rounding surprises like 74.99999% counting as below 75.
+
+    can_miss:    most classes you can skip in a row and still be >= target.
+      We need   100 * attended >= target * (attended + missed + x)
+      so        x <= (100*attended - target*(attended+missed)) / target
+    must_attend: fewest classes you must attend in a row to get back to target.
+      We need   100 * (attended + y) >= target * (attended + missed + y)
+      so        y >= (target*(attended+missed) - 100*attended) / (100 - target)
+    """
+    total = attended + missed
+    if total == 0:
+        return {"percent": None, "can_miss": 0, "must_attend": 0}
+
+    percent = 100 * attended / total  # float is fine here: it's only for display
+    slack = 100 * attended - target * total
+    if slack >= 0:
+        # // rounds down, which is what we want: you can't skip half a class.
+        return {"percent": percent, "can_miss": slack // target, "must_attend": 0}
+    if target >= 100:
+        # Already missed one with a 100% target: no amount of attending fixes it.
+        return {"percent": percent, "can_miss": 0, "must_attend": None}
+    # -(-a // b) is a whole-number way to round UP (ceil) a / b.
+    return {"percent": percent, "can_miss": 0, "must_attend": -(-(-slack) // (100 - target))}
