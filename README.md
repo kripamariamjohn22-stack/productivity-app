@@ -55,8 +55,9 @@ The app notices and simply opens the browser login again. To stop this, go to **
 
 | File | What it's for |
 |------|---------------|
-| `app.py` | Entry point. Creates the database, shows the home screen. |
+| `app.py` | Entry point. Creates the database and lists the pages (Today opens first). |
 | `pages/` | One file per page. Streamlit adds each one to the sidebar. |
+| `pages/1_Today.py` | Today: sync button, calendar timeline with a "now" line, today's tasks and habits. |
 | `pages/2_To-do.py` | To-do list: add, finish, drop, undo; postponement warnings. |
 | `pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
 | `core/db.py` | All database code: creating tables and reading/writing data. |
@@ -71,4 +72,5 @@ The app notices and simply opens the browser login again. To stop this, go to **
 - [x] Phase 1 · Step 2 — to-do list
 - [x] Phase 1 · Step 3 — habit tracker
 - [x] Phase 1 · Step 4 — Google Calendar sync
-- [ ] Phase 1 · Step 5 — Today page
+- [x] Phase 1 · Step 5 — Today page
+- [ ] Phase 2 — college features (attendance, timetable, assignments)

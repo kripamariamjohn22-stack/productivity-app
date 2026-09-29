@@ -2,8 +2,9 @@
 app.py — the front door of the app.
 
 Run it with:  streamlit run app.py
-Streamlit automatically turns every file inside pages/ into a page in the
-sidebar, so this file only needs to set things up and show a home screen.
+
+st.navigation lets us list the pages ourselves (instead of Streamlit guessing
+from file names), give them proper titles, and make Today the page you land on.
 """
 
 import streamlit as st
@@ -16,14 +17,9 @@ st.set_page_config(page_title="Productivity", layout="wide")
 # It's cheap and safe to run on every reload ("IF NOT EXISTS").
 db.init_db()
 
-st.title("My Productivity App")
-st.write("Use the sidebar to open a page. More pages appear as we build them.")
-
-# Quick sanity check so you can see the seed habits made it into the database.
-conn = db.get_connection()
-habits = conn.execute("SELECT name, minimum_version, target_per_week FROM habits").fetchall()
-conn.close()
-
-st.subheader("Habits in the database")
-for h in habits:
-    st.write(f"- **{h['name']}** — minimum: _{h['minimum_version']}_ — target {h['target_per_week']}/7 days")
+page = st.navigation([
+    st.Page("pages/1_Today.py", title="Today", icon="📅", default=True),
+    st.Page("pages/2_To-do.py", title="To-do", icon="✅"),
+    st.Page("pages/3_Habits.py", title="Habits", icon="🔥"),
+])
+page.run()

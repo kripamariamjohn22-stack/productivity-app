@@ -167,6 +167,22 @@ def get_closed_tasks(limit=20):
     return rows
 
 
+def get_tasks_for_day(day):
+    """Tasks that belong on one day's plan: still open and due that day,
+    or finished that day (so you can see what you already got done)."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT * FROM tasks
+           WHERE (status = 'todo' AND due_date = :day)
+              OR (status = 'done' AND substr(completed_at, 1, 10) = :day)
+           ORDER BY status DESC,  -- 'todo' sorts after 'done' alphabetically, so DESC puts open ones first
+                    CASE priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END""",
+        {"day": day.isoformat()},
+    ).fetchall()
+    conn.close()
+    return rows
+
+
 def complete_task(task_id, actual_minutes=None):
     """Mark a task done and record how long it really took."""
     conn = get_connection()
