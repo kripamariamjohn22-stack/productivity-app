@@ -228,6 +228,82 @@ def roll_over_tasks(today=None):
     return cur.rowcount  # how many tasks were rolled over
 
 
+
+# ---------------------------------------------------------------------------
+# Habits
+# ---------------------------------------------------------------------------
+
+def get_habits():
+    """All active (not archived) habits, oldest first."""
+    conn = get_connection()
+    rows = conn.execute("SELECT * FROM habits WHERE active = 1 ORDER BY id").fetchall()
+    conn.close()
+    return rows
+
+
+def add_habit(name, minimum_version, target_per_week):
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO habits (name, minimum_version, target_per_week) VALUES (?, ?, ?)",
+        (name, minimum_version or None, target_per_week),
+    )
+    conn.commit()
+    conn.close()
+
+
+def archive_habit(habit_id):
+    """Hide a habit but keep its history (same idea as dropping a task)."""
+    conn = get_connection()
+    conn.execute("UPDATE habits SET active = 0 WHERE id = ?", (habit_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_habit_logs(habit_id):
+    """Every day this habit was done, as {date: is_minimum}.
+    Loading all of it is fine: even 5 years of daily logs is under 2,000 rows."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT date, is_minimum FROM habit_logs WHERE habit_id = ?", (habit_id,)
+    ).fetchall()
+    conn.close()
+    return {date.fromisoformat(r["date"]): bool(r["is_minimum"]) for r in rows}
+
+
+def get_logs_for_date(day):
+    """Which habits were done on one day, as {habit_id: is_minimum}."""
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT habit_id, is_minimum FROM habit_logs WHERE date = ?", (day.isoformat(),)
+    ).fetchall()
+    conn.close()
+    return {r["habit_id"]: bool(r["is_minimum"]) for r in rows}
+
+
+def set_habit_log(habit_id, day, done, is_minimum=False):
+    """Record (or un-record) a habit for one day.
+
+    done=True  -> make sure there's a row (update is_minimum if one exists)
+    done=False -> delete the row, because "no row" means "not done"
+    """
+    conn = get_connection()
+    if done:
+        # "Upsert": insert, or if (habit_id, date) already exists, update it instead.
+        # This works because of the UNIQUE (habit_id, date) rule on the table.
+        conn.execute(
+            """INSERT INTO habit_logs (habit_id, date, is_minimum) VALUES (?, ?, ?)
+               ON CONFLICT (habit_id, date) DO UPDATE SET is_minimum = excluded.is_minimum""",
+            (habit_id, day.isoformat(), int(is_minimum)),
+        )
+    else:
+        conn.execute(
+            "DELETE FROM habit_logs WHERE habit_id = ? AND date = ?",
+            (habit_id, day.isoformat()),
+        )
+    conn.commit()
+    conn.close()
+
+
 if __name__ == "__main__":
     # Lets you run `python -m core.db` to create the database and peek inside.
     init_db()
