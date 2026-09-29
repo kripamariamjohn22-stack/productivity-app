@@ -108,11 +108,51 @@ def init_db():
             status      TEXT NOT NULL CHECK (status IN ('attended', 'missed')),
             logged_at   TEXT NOT NULL
         );
+
+        -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
+        -- (same numbering as Python's date.weekday()).
+        CREATE TABLE IF NOT EXISTS timetable (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id  INTEGER NOT NULL REFERENCES subjects(id) ON DELETE CASCADE,
+            weekday     INTEGER NOT NULL CHECK (weekday BETWEEN 0 AND 6),
+            start_time  TEXT NOT NULL,   -- 'HH:MM'
+            end_time    TEXT NOT NULL,
+            room        TEXT
+        );
         """
     )
+    run_migrations(conn)
     seed_habits(conn)
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Migrations: changes to tables that already exist
+# ---------------------------------------------------------------------------
+# "CREATE TABLE IF NOT EXISTS" can't change a table you already have, so
+# editing a CREATE statement above would do nothing to your real database.
+# Instead, every change to an existing table is added to the END of this list.
+#
+# SQLite has a spare number in every database file, PRAGMA user_version
+# (starts at 0). We use it to remember how many migrations already ran:
+# user_version = 1 means "MIGRATIONS[0] is done", and so on.
+#
+# Rules: never edit or reorder an entry once it has run; only append new ones.
+MIGRATIONS = [
+    # 1. Phase 2 step 2: link a logged class to the timetable slot it came from,
+    #    so a double lab (two slots, same subject, same day) is tracked per slot.
+    #    SET NULL: deleting a slot keeps the attendance history.
+    "ALTER TABLE attendance ADD COLUMN slot_id INTEGER REFERENCES timetable(id) ON DELETE SET NULL",
+]
+
+
+def run_migrations(conn):
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    for number, sql in enumerate(MIGRATIONS[version:], start=version + 1):
+        conn.execute(sql)
+        # PRAGMA doesn't accept ? placeholders; `number` is our own int, so this is safe.
+        conn.execute(f"PRAGMA user_version = {number}")
 
 
 # Starting habits from the spec: (name, minimum version, days per week)
@@ -451,12 +491,14 @@ def get_subjects_with_counts():
     return rows
 
 
-def log_class(subject_id, day, status):
-    """Record one class as 'attended' or 'missed'."""
+def log_class(subject_id, day, status, slot_id=None):
+    """Record one class as 'attended' or 'missed'.
+    slot_id is set when it's logged from a timetable class on the Today page."""
     conn = get_connection()
     conn.execute(
-        "INSERT INTO attendance (subject_id, date, status, logged_at) VALUES (?, ?, ?, ?)",
-        (subject_id, day.isoformat(), status, now_str()),
+        """INSERT INTO attendance (subject_id, date, status, logged_at, slot_id)
+           VALUES (?, ?, ?, ?, ?)""",
+        (subject_id, day.isoformat(), status, now_str(), slot_id),
     )
     conn.commit()
     conn.close()
@@ -478,6 +520,66 @@ def delete_class(attendance_id):
     conn.execute("DELETE FROM attendance WHERE id = ?", (attendance_id,))
     conn.commit()
     conn.close()
+
+
+
+# ---------------------------------------------------------------------------
+# Timetable
+# ---------------------------------------------------------------------------
+
+def add_timetable_slot(subject_id, weekday, start_time, end_time, room=None):
+    """start_time / end_time are datetime.time objects; stored as 'HH:MM'
+    text, which sorts correctly ('09:00' < '14:30')."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO timetable (subject_id, weekday, start_time, end_time, room)
+           VALUES (?, ?, ?, ?, ?)""",
+        (subject_id, weekday, start_time.strftime("%H:%M"), end_time.strftime("%H:%M"), room or None),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_timetable_slot(slot_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM timetable WHERE id = ?", (slot_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_timetable():
+    """The whole week, Monday first, each day in time order. Only active subjects."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT t.*, s.name AS subject
+           FROM timetable t
+           JOIN subjects s ON s.id = t.subject_id
+           WHERE s.active = 1
+           ORDER BY t.weekday, t.start_time"""
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+def get_classes_for_day(day):
+    """Timetable classes on one date, plus whether each was already marked.
+
+    The LEFT JOIN looks for an attendance row for this exact slot on this date:
+    found -> logged_status is 'attended'/'missed'; not found -> it's NULL.
+    """
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT t.*, s.name AS subject,
+                  a.status AS logged_status, a.id AS attendance_id
+           FROM timetable t
+           JOIN subjects s ON s.id = t.subject_id AND s.active = 1
+           LEFT JOIN attendance a ON a.slot_id = t.id AND a.date = :day
+           WHERE t.weekday = :weekday
+           ORDER BY t.start_time""",
+        {"day": day.isoformat(), "weekday": day.weekday()},
+    ).fetchall()
+    conn.close()
+    return rows
 
 
 if __name__ == "__main__":

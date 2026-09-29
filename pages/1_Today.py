@@ -1,12 +1,13 @@
 """
 Today page: calendar events, today's tasks and habits in one place.
 
-Calendar events have times, so they form a timeline with a "now" line.
+Calendar events and timetable classes have times, so they form a timeline
+with a "now" line.
 Tasks and habits don't have times, so they sit in an "Anytime today" block
 underneath, where you can tick them off without leaving the page.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 import streamlit as st
 
@@ -37,6 +38,7 @@ else:
     st.warning(message + f" Last successful sync: {db.get_setting('last_sync', 'never')}")
 
 events = db.get_events_for_day(today)
+classes = db.get_classes_for_day(today)
 tasks = db.get_tasks_for_day(today)
 habits = db.get_habits()
 habit_logs = db.get_logs_for_date(today)
@@ -44,12 +46,12 @@ habit_logs = db.get_logs_for_date(today)
 # One-line summary at the top, so a glance tells you how the day is going.
 tasks_done = sum(1 for t in tasks if t["status"] == "done")
 st.write(
-    f"**{len(events)}** event(s) · **{tasks_done}/{len(tasks)}** tasks done · "
-    f"**{len(habit_logs)}/{len(habits)}** habits done"
+    f"**{len(events)}** event(s) · **{len(classes)}** class(es) · "
+    f"**{tasks_done}/{len(tasks)}** tasks done · **{len(habit_logs)}/{len(habits)}** habits done"
 )
 
 # ---------------------------------------------------------------------------
-# Timeline: calendar events
+# Timeline: calendar events + today's classes, merged and sorted by time
 # ---------------------------------------------------------------------------
 st.subheader("Timeline")
 
@@ -57,29 +59,67 @@ for e in events:
     if e["all_day"]:
         st.write(f"📌 **All day** · {e['title']}")
 
-timed = [e for e in events if not e["all_day"]]
-# .astimezone() gives "now" a time zone, so we can compare it with Google's
-# times like 2026-09-29T10:00:00+05:30 (comparing with and without a
-# time zone raises an error in Python).
+# Put both kinds into one list of dicts with the same keys, so one loop can
+# draw them in time order. `slot` is None for calendar events.
+# .astimezone() gives every time a time zone, so we can compare them with
+# Google's times like 2026-09-29T10:00:00+05:30 (comparing times with and
+# without a time zone raises an error in Python).
+timeline = [
+    {"start": datetime.fromisoformat(e["start"]), "end": datetime.fromisoformat(e["end"]),
+     "title": e["title"], "slot": None}
+    for e in events if not e["all_day"]
+]
+for c in classes:
+    room = f" · {c['room']}" if c["room"] else ""
+    timeline.append({
+        "start": datetime.combine(today, time.fromisoformat(c["start_time"])).astimezone(),
+        "end": datetime.combine(today, time.fromisoformat(c["end_time"])).astimezone(),
+        "title": f"🎓 {c['subject']}{room}",
+        "slot": c,
+    })
+timeline.sort(key=lambda item: item["start"])
+
 now = datetime.now().astimezone()
 now_shown = False
-for e in timed:
-    start = datetime.fromisoformat(e["start"])
-    end = datetime.fromisoformat(e["end"])
-    if not now_shown and start > now:
+for item in timeline:
+    if not now_shown and item["start"] > now:
         st.markdown(f"🔴 **now · {now:%H:%M}**")
         now_shown = True
-    line = f"{start:%H:%M}–{end:%H:%M} · {e['title']}"
-    if end < now:
-        st.caption(f"~~{line}~~")      # already over: greyed out
-    elif start <= now:
-        st.markdown(f"▶️ **{line}** (happening now)")
+
+    line = f"{item['start']:%H:%M}–{item['end']:%H:%M} · {item['title']}"
+    slot = item["slot"]
+    # Classes get a narrow column on the right for the attendance buttons.
+    if slot:
+        text_col, a_col, b_col = st.columns([6, 1, 1])
     else:
-        st.markdown(line)
-if not now_shown and timed:
-    st.markdown(f"🔴 **now · {now:%H:%M}** · no more events today")
-if not events:
-    st.write("No calendar events today (or not synced yet).")
+        text_col = st.container()
+
+    if item["end"] < now:
+        text_col.caption(f"~~{line}~~")      # already over: greyed out
+    elif item["start"] <= now:
+        text_col.markdown(f"▶️ **{line}** (happening now)")
+    else:
+        text_col.markdown(line)
+
+    if slot:
+        sid = slot["id"]
+        if slot["logged_status"] is None:
+            if a_col.button("✅", key=f"cls_att_{sid}", help="Attended"):
+                db.log_class(slot["subject_id"], today, "attended", slot_id=sid)
+                st.rerun()
+            if b_col.button("❌", key=f"cls_miss_{sid}", help="Missed"):
+                db.log_class(slot["subject_id"], today, "missed", slot_id=sid)
+                st.rerun()
+        else:
+            a_col.write("✅" if slot["logged_status"] == "attended" else "❌")
+            if b_col.button("↩️", key=f"cls_undo_{sid}", help="Undo"):
+                db.delete_class(slot["attendance_id"])
+                st.rerun()
+
+if not now_shown and timeline:
+    st.markdown(f"🔴 **now · {now:%H:%M}** · nothing else scheduled today")
+if not timeline and not events:
+    st.write("No calendar events or classes today (or not synced yet).")
 
 # ---------------------------------------------------------------------------
 # Anytime today: tasks
