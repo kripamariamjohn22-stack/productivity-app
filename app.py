@@ -23,5 +23,6 @@ page = st.navigation([
     st.Page("pages/3_Habits.py", title="Habits", icon="🔥"),
     st.Page("pages/4_Attendance.py", title="Attendance", icon="🎓"),
     st.Page("pages/5_Timetable.py", title="Timetable", icon="🗓️"),
+    st.Page("pages/6_Notes.py", title="Meeting notes", icon="📝"),
 ])
 page.run()

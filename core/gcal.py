@@ -74,12 +74,20 @@ def _parse_event(item):
     """
     all_day = "date" in item["start"]
     key = "date" if all_day else "dateTime"
+    # Attendees: use their name if Google has one, else their email.
+    # Skip yourself ("self") and meeting rooms ("resource").
+    attendees = [
+        a.get("displayName") or a.get("email", "?")
+        for a in item.get("attendees", [])
+        if not a.get("self") and not a.get("resource")
+    ]
     return {
         "id": item["id"],
         "title": item.get("summary", "(no title)"),  # untitled events have no summary
         "start": item["start"][key],
         "end": item["end"][key],
         "all_day": int(all_day),
+        "attendees": ", ".join(attendees) or None,
     }
 
 

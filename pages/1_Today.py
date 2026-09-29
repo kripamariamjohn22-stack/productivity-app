@@ -66,7 +66,7 @@ for e in events:
 # without a time zone raises an error in Python).
 timeline = [
     {"start": datetime.fromisoformat(e["start"]), "end": datetime.fromisoformat(e["end"]),
-     "title": e["title"], "slot": None}
+     "title": e["title"], "slot": None, "event_id": e["id"]}
     for e in events if not e["all_day"]
 ]
 for c in classes:
@@ -76,6 +76,7 @@ for c in classes:
         "end": datetime.combine(today, time.fromisoformat(c["end_time"])).astimezone(),
         "title": f"🎓 {c['subject']}{room}",
         "slot": c,
+        "event_id": None,
     })
 timeline.sort(key=lambda item: item["start"])
 
@@ -88,11 +89,9 @@ for item in timeline:
 
     line = f"{item['start']:%H:%M}–{item['end']:%H:%M} · {item['title']}"
     slot = item["slot"]
-    # Classes get a narrow column on the right for the attendance buttons.
-    if slot:
-        text_col, a_col, b_col = st.columns([6, 1, 1])
-    else:
-        text_col = st.container()
+    # Narrow columns on the right: attendance buttons for classes,
+    # a notes button for calendar events.
+    text_col, a_col, b_col = st.columns([6, 1, 1])
 
     if item["end"] < now:
         text_col.caption(f"~~{line}~~")      # already over: greyed out
@@ -100,6 +99,13 @@ for item in timeline:
         text_col.markdown(f"▶️ **{line}** (happening now)")
     else:
         text_col.markdown(line)
+
+    if item["event_id"]:
+        if b_col.button("📝", key=f"notes_{item['event_id']}", help="Meeting notes"):
+            # Tell the Notes page which event to open, then go there.
+            st.session_state["notes_date"] = today
+            st.session_state["notes_event_id"] = item["event_id"]
+            st.switch_page("pages/6_Notes.py")
 
     if slot:
         sid = slot["id"]

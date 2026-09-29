@@ -62,8 +62,9 @@ The app notices and simply opens the browser login again. To stop this, go to **
 | `pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
 | `pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
+| `pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
-| `core/gcal.py` | Google login + reading today's events into the database. Test with `python -m core.gcal`. |
+| `core/gcal.py` | Google login + reading a day's events (with attendees) into the database. Test with `python -m core.gcal`. |
 | `core/analytics.py` | Number crunching: habit streaks, heatmap grid, attendance maths; insights in Phase 4. |
 | `data/app.db` | The SQLite database. Created automatically. **Not in git.** |
 | `credentials.json` / `token.json` | Google login files. **Never commit these.** |
@@ -78,4 +79,5 @@ The app notices and simply opens the browser login again. To stop this, go to **
 - [x] Phase 2 · Step 1 — attendance tracker
 - [x] Phase 2 · Step 2 — timetable (on Today page)
 - [x] Phase 2 · Step 3 — assignments & exams with countdowns
-- [ ] Phase 3 — meeting notes
+- [x] Phase 3 · Step 1 — meeting notes page
+- [ ] Phase 3 · Step 2 — action items become tasks

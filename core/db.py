@@ -109,6 +109,27 @@ def init_db():
             logged_at   TEXT NOT NULL
         );
 
+        -- Phase 3 ---------------------------------------------------------
+
+        -- Meeting notes: one per calendar event (UNIQUE event_id).
+        -- title/start/attendees are COPIED from the event instead of joined,
+        -- because the events table is only a cache: a re-sync can delete rows
+        -- from it, and your notes must survive that.
+        CREATE TABLE IF NOT EXISTS notes (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id      TEXT NOT NULL UNIQUE,
+            title         TEXT NOT NULL,
+            start         TEXT NOT NULL,
+            "end"         TEXT,
+            attendees     TEXT,
+            agenda        TEXT NOT NULL DEFAULT '',
+            notes         TEXT NOT NULL DEFAULT '',
+            decisions     TEXT NOT NULL DEFAULT '',
+            action_items  TEXT NOT NULL DEFAULT '',   -- one per line
+            created_at    TEXT NOT NULL,
+            updated_at    TEXT NOT NULL
+        );
+
         -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
         -- (same numbering as Python's date.weekday()).
         CREATE TABLE IF NOT EXISTS timetable (
@@ -150,6 +171,9 @@ MIGRATIONS = [
        CHECK (type IN ('task', 'assignment', 'exam'))""",
     # 3. Optional link from an assignment/exam to its subject.
     "ALTER TABLE tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL",
+    # 4. Phase 3: who's invited to each calendar event ("Asha, bob@uni.edu").
+    #    Old cached events get it on their next sync.
+    "ALTER TABLE events ADD COLUMN attendees TEXT",
 ]
 
 
@@ -445,8 +469,8 @@ def replace_events_for_day(day, events):
     with conn:  # `with conn` = commit if everything worked, roll back if not
         conn.execute(f"DELETE FROM events WHERE {_EVENTS_ON_DAY}", {"day": day.isoformat()})
         conn.executemany(
-            """INSERT OR REPLACE INTO events (id, title, start, "end", all_day, synced_at)
-               VALUES (:id, :title, :start, :end, :all_day, :synced_at)""",
+            """INSERT OR REPLACE INTO events (id, title, start, "end", all_day, attendees, synced_at)
+               VALUES (:id, :title, :start, :end, :all_day, :attendees, :synced_at)""",
             [{**e, "synced_at": now_str()} for e in events],
         )
     conn.close()
@@ -616,6 +640,59 @@ def get_classes_for_day(day):
            WHERE t.weekday = :weekday
            ORDER BY t.start_time""",
         {"day": day.isoformat(), "weekday": day.weekday()},
+    ).fetchall()
+    conn.close()
+    return rows
+
+
+
+# ---------------------------------------------------------------------------
+# Meeting notes
+# ---------------------------------------------------------------------------
+
+def get_event(event_id):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def get_note_for_event(event_id):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM notes WHERE event_id = ?", (event_id,)).fetchone()
+    conn.close()
+    return row
+
+
+def save_note(event, agenda, notes, decisions, action_items):
+    """Create the note for this event, or update it if it already exists.
+    `event` is a row from the events table; its details are copied in."""
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO notes (event_id, title, start, "end", attendees,
+                              agenda, notes, decisions, action_items, created_at, updated_at)
+           VALUES (:event_id, :title, :start, :end, :attendees,
+                   :agenda, :notes, :decisions, :action_items, :now, :now)
+           ON CONFLICT (event_id) DO UPDATE SET
+               -- refresh the copied details too, in case the event was renamed
+               title = excluded.title, start = excluded.start, "end" = excluded."end",
+               attendees = excluded.attendees,
+               agenda = excluded.agenda, notes = excluded.notes,
+               decisions = excluded.decisions, action_items = excluded.action_items,
+               updated_at = excluded.updated_at""",
+        {"event_id": event["id"], "title": event["title"], "start": event["start"],
+         "end": event["end"], "attendees": event["attendees"],
+         "agenda": agenda, "notes": notes, "decisions": decisions,
+         "action_items": action_items, "now": now_str()},
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_recent_notes(limit=20):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM notes ORDER BY start DESC LIMIT ?", (limit,)
     ).fetchall()
     conn.close()
     return rows
