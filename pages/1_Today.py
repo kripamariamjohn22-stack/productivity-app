@@ -167,7 +167,8 @@ for task in tasks:
 
     info, minutes_col, done_col = st.columns([6, 2, 1])
     planned = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
-    info.markdown(f"⬜ **{task['title']}**  \n{task['priority']} · {task['tag']}{planned}")
+    meeting = f" · 📝 from “{task['meeting']}”" if task["meeting"] else ""
+    info.markdown(f"⬜ **{task['title']}**  \n{task['priority']} · {task['tag']}{planned}{meeting}")
     if task["times_postponed"] >= 3:
         info.warning(f"Postponed {task['times_postponed']}x — break it down or drop it?")
     actual = minutes_col.number_input(

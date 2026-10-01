@@ -69,12 +69,26 @@ with st.form(f"note_{event_id}"):
     notes = st.text_area("Notes", existing["notes"] if existing else "", height=200, key=f"notes_{event_id}")
     decisions = st.text_area("Decisions", existing["decisions"] if existing else "", key=f"decisions_{event_id}")
     action_items = st.text_area(
-        "Action items (one per line)", existing["action_items"] if existing else "",
+        "Action items (one per line, each becomes a task)",
+        existing["action_items"] if existing else "",
         key=f"actions_{event_id}",
     )
+    tag = st.selectbox("Tag for new action-item tasks", db.TAGS, key=f"tag_{event_id}")
     if st.form_submit_button("💾 Save notes"):
-        db.save_note(event, agenda.strip(), notes.strip(), decisions.strip(), action_items.strip())
-        st.success("Saved.")
+        added, removed = db.save_note(
+            event, agenda.strip(), notes.strip(), decisions.strip(), action_items.strip(), tag
+        )
+        st.success(f"Saved. Tasks: {added} added, {removed} removed.")
+
+# Tasks created from this note, so you can see what the action items turned into.
+note = db.get_note_for_event(event_id)  # re-read: the note may have just been created
+if note:
+    linked = db.get_tasks_for_note(note["id"])
+    if linked:
+        st.markdown("**Tasks from this meeting**")
+        icons = {"todo": "⬜", "done": "✅", "dropped": "🗑️"}
+        for t in linked:
+            st.write(f"{icons[t['status']]} {t['title']} · due {t['due_date'] or '—'}")
 
 # ---------------------------------------------------------------------------
 # Recent notes

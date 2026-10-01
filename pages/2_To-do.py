@@ -80,6 +80,7 @@ for task in open_tasks:
 
     planned_text = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
     subject_text = f" · {task['subject']}" if task["subject"] else ""
+    subject_text += f" · 📝 from “{task['meeting']}”" if task["meeting"] else ""
     days_left, when = analytics.countdown(task["due_date"])
     info.markdown(
         f"**{task['title']}**  \n"

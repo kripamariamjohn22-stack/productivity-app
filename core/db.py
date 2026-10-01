@@ -6,6 +6,7 @@ Pages call simple functions like `add_task(...)` and don't care how
 the data is stored. If you ever change the database, you only touch this file.
 """
 
+import re
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -174,6 +175,9 @@ MIGRATIONS = [
     # 4. Phase 3: who's invited to each calendar event ("Asha, bob@uni.edu").
     #    Old cached events get it on their next sync.
     "ALTER TABLE events ADD COLUMN attendees TEXT",
+    # 5. Phase 3 step 2: which meeting note an action-item task came from.
+    #    SET NULL: deleting a note keeps its tasks (they just lose the link).
+    "ALTER TABLE tasks ADD COLUMN note_id INTEGER REFERENCES notes(id) ON DELETE SET NULL",
 ]
 
 
@@ -242,9 +246,10 @@ def get_open_tasks():
     The LEFT JOIN adds the subject name (NULL for tasks without a subject)."""
     conn = get_connection()
     rows = conn.execute(
-        """SELECT t.*, s.name AS subject
+        """SELECT t.*, s.name AS subject, n.title AS meeting
            FROM tasks t
            LEFT JOIN subjects s ON s.id = t.subject_id
+           LEFT JOIN notes n ON n.id = t.note_id
            WHERE t.status = 'todo'
            ORDER BY
              t.due_date IS NULL,  -- tasks with no due date go last (FALSE=0 sorts first)
@@ -275,12 +280,14 @@ def get_tasks_for_day(day):
     Assignments and exams are left out: the Today page shows them under Deadlines."""
     conn = get_connection()
     rows = conn.execute(
-        """SELECT * FROM tasks
-           WHERE type = 'task'
-             AND ((status = 'todo' AND due_date = :day)
-                  OR (status = 'done' AND substr(completed_at, 1, 10) = :day))
-           ORDER BY status DESC,  -- 'todo' sorts after 'done' alphabetically, so DESC puts open ones first
-                    CASE priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END""",
+        """SELECT t.*, n.title AS meeting
+           FROM tasks t
+           LEFT JOIN notes n ON n.id = t.note_id
+           WHERE t.type = 'task'
+             AND ((t.status = 'todo' AND t.due_date = :day)
+                  OR (t.status = 'done' AND substr(t.completed_at, 1, 10) = :day))
+           ORDER BY t.status DESC,  -- 'todo' sorts after 'done' alphabetically, so DESC puts open ones first
+                    CASE t.priority WHEN 'High' THEN 0 WHEN 'Med' THEN 1 ELSE 2 END""",
         {"day": day.isoformat()},
     ).fetchall()
     conn.close()
@@ -664,10 +671,35 @@ def get_note_for_event(event_id):
     return row
 
 
-def save_note(event, agenda, notes, decisions, action_items):
-    """Create the note for this event, or update it if it already exists.
-    `event` is a row from the events table; its details are copied in."""
+def action_item_lines(text):
+    """Split the Action items box into clean, unique task titles.
+
+    Strips bullets people type out of habit ("- ", "* ", "• ", "[ ] ")
+    so "- Email Dr. Rao" and "Email Dr. Rao" count as the same item.
+    dict.fromkeys(...) removes duplicates but keeps the original order.
+    """
+    lines = [re.sub(r"^([-*•]|\[\s?\])\s*", "", line.strip()) for line in text.splitlines()]
+    return list(dict.fromkeys(line for line in lines if line))
+
+
+def save_note(event, agenda, notes, decisions, action_items, tag="college"):
+    """Create or update the note for this event, then sync its action items
+    into the tasks table. Returns (number of tasks added, number removed).
+
+    Everything happens in one transaction (`with conn`): either the note AND
+    its tasks are saved, or nothing is, so they can never get out of step.
+    """
     conn = get_connection()
+    with conn:
+        note_id = _upsert_note(conn, event, agenda, notes, decisions, action_items)
+        added, removed = _sync_action_items(conn, note_id, action_items, tag)
+    conn.close()
+    return added, removed
+
+
+def _upsert_note(conn, event, agenda, notes, decisions, action_items):
+    """Insert or update the notes row and return its id.
+    (The leading _ means "only used inside this file".)"""
     conn.execute(
         """INSERT INTO notes (event_id, title, start, "end", attendees,
                               agenda, notes, decisions, action_items, created_at, updated_at)
@@ -685,8 +717,49 @@ def save_note(event, agenda, notes, decisions, action_items):
          "agenda": agenda, "notes": notes, "decisions": decisions,
          "action_items": action_items, "now": now_str()},
     )
-    conn.commit()
+    # After an upsert we don't know if it inserted or updated, so look the id up.
+    return conn.execute("SELECT id FROM notes WHERE event_id = ?", (event["id"],)).fetchone()["id"]
+
+
+def _sync_action_items(conn, note_id, action_items, tag):
+    """Make the note's tasks match its Action items box.
+
+    - new line                        -> new task (due today, so it shows on Today)
+    - line already has a task         -> nothing (no duplicates on re-save)
+    - line gone, task still open      -> task deleted (e.g. you fixed a typo)
+    - line gone, task done or dropped -> kept: that's history, not a mistake
+    """
+    wanted = action_item_lines(action_items)
+    existing = {
+        row["title"]: row
+        for row in conn.execute("SELECT id, title, status FROM tasks WHERE note_id = ?", (note_id,))
+    }
+
+    added = 0
+    for title in wanted:
+        if title not in existing:
+            conn.execute(
+                """INSERT INTO tasks (title, tag, due_date, created_at, type, note_id)
+                   VALUES (?, ?, ?, ?, 'task', ?)""",
+                (title, tag, date.today().isoformat(), now_str(), note_id),
+            )
+            added += 1
+
+    removed = 0
+    for title, row in existing.items():
+        if title not in wanted and row["status"] == "todo":
+            conn.execute("DELETE FROM tasks WHERE id = ?", (row["id"],))
+            removed += 1
+    return added, removed
+
+
+def get_tasks_for_note(note_id):
+    conn = get_connection()
+    rows = conn.execute(
+        "SELECT * FROM tasks WHERE note_id = ? ORDER BY id", (note_id,)
+    ).fetchall()
     conn.close()
+    return rows
 
 
 def get_recent_notes(limit=20):
