@@ -324,3 +324,96 @@ def completion_times(tasks):
         "best_window": (start, two_hour.max() / len(times)),
         "total": len(times),
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: weekly review
+# ---------------------------------------------------------------------------
+
+def weekly_review(tasks, habit_logs, habits, monday):
+    """Everything the Weekly review page shows for the week starting `monday`.
+
+    Note: the app stores HOW MANY times a task was postponed, not on which
+    days, so "skipped" here means dropped that week or still open at its end.
+    """
+    start = pd.Timestamp(monday)
+    end = start + pd.Timedelta(days=7)  # next Monday 00:00 (not included)
+    completed = pd.to_datetime(tasks["completed_at"])
+    created = pd.to_datetime(tasks["created_at"])
+
+    def finished_between(a, b, status):
+        return tasks[(tasks["status"] == status) & (completed >= a) & (completed < b)]
+
+    done = finished_between(start, end, "done")
+    dropped = finished_between(start, end, "dropped")
+    prev_done = finished_between(start - pd.Timedelta(days=7), start, "done")
+    # Open at the end of the week = existed by then, and not done/dropped by then.
+    closed_by_end = tasks["status"].isin(["done", "dropped"]) & (completed < end)
+    left_open = tasks[(created < end) & ~closed_by_end]
+
+    logs = habit_logs[(pd.to_datetime(habit_logs["date"]) >= start) & (pd.to_datetime(habit_logs["date"]) < end)]
+    habit_rows = []
+    for _, h in habits.iterrows():
+        days = int((logs["habit_id"] == h["id"]).sum())
+        habit_rows.append({"habit": h["name"], "days": days, "target": int(h["target_per_week"]),
+                           "kept": days >= h["target_per_week"]})
+
+    timed = done[done["actual_minutes"].notna()]
+    time_split = timed.groupby("tag")["actual_minutes"].sum().sort_values(ascending=False)
+    planned = timed[timed["planned_minutes"].notna()]
+
+    return {
+        "done": done, "dropped": dropped, "left_open": left_open,
+        "prev_done_count": len(prev_done),
+        "habits": pd.DataFrame(habit_rows),
+        "time_split": time_split,
+        "minutes": int(time_split.sum()),
+        # plan vs actual for tasks that have both numbers
+        "planned_total": int(planned["planned_minutes"].sum()),
+        "actual_total": int(planned["actual_minutes"].sum()),
+        "by_tag_ratio": planned.groupby("tag").agg(
+            planned=("planned_minutes", "sum"), actual=("actual_minutes", "sum"), n=("id", "count")),
+    }
+
+
+def week_insights(review, daily):
+    """Candidate insights for the week, most important first (a fixed order,
+    so it's always clear why one was picked). `daily` = daily_table() up to
+    the end of the week, for the habit link."""
+    found = []
+
+    # 1. This week's biggest plan overrun (3+ tasks, 20%+ over).
+    ratios = review["by_tag_ratio"]
+    ratios = ratios[ratios["n"] >= 3]
+    if not ratios.empty:
+        over = (ratios["actual"] / ratios["planned"] - 1) * 100
+        tag = over.idxmax()
+        if over[tag] >= 20:
+            found.append(f"**{tag}** took **{over[tag]:.0f}% longer** than planned this week "
+                         f"({int(ratios.loc[tag, 'actual'])} min vs {int(ratios.loc[tag, 'planned'])} planned).")
+
+    # 2. Big change from the week before (30%+, and at least 5 tasks to compare).
+    now, before = len(review["done"]), review["prev_done_count"]
+    if before >= 5 and abs(now - before) / before >= 0.3:
+        word = "more" if now > before else "fewer"
+        found.append(f"You finished **{abs(now - before)} {word}** tasks than the week before ({now} vs {before}).")
+
+    # 3. A task that's stuck: still open at the week's end after 3+ postponements.
+    stuck = review["left_open"][review["left_open"]["times_postponed"] >= 3]
+    if not stuck.empty:
+        worst = stuck.sort_values("times_postponed", ascending=False).iloc[0]
+        found.append(f"**{worst['title']}** has been postponed **{worst['times_postponed']}x**. "
+                     "Break it down or drop it?")
+
+    # 4. The strongest habit link that passes the chance check.
+    best = None
+    for habit in [c for c in daily.columns if c != "tasks_done"]:
+        r = habit_task_link(daily, habit)
+        if r["enough"] and r["p_value"] < 0.05 and r["pct"] and r["pct"] > 0:
+            if best is None or r["pct"] > best[1]["pct"]:
+                best = (habit, r)
+    if best:
+        habit, r = best
+        found.append(f"On days you did **{habit}**, you finished **{r['pct']:.0f}% more** tasks "
+                     f"(so far, unlikely to be chance).")
+    return found
