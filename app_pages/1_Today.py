@@ -11,7 +11,7 @@ from datetime import date, datetime, time
 
 import streamlit as st
 
-from core import analytics, db, gcal
+from core import analytics, db, gcal, pomodoro
 
 db.init_db()
 today = date.today()
@@ -158,6 +158,7 @@ st.markdown("**Tasks**")
 if not tasks:
     st.write("No tasks due today. Add some on the To-do page.")
 
+pomo_totals = db.get_pomodoro_totals()  # {task_id: (count, minutes)}
 for task in tasks:
     tid = task["id"]
     if task["status"] == "done":
@@ -165,16 +166,23 @@ for task in tasks:
         st.write(f"✅ ~~{task['title']}~~{mins}")
         continue
 
-    info, minutes_col, done_col = st.columns([6, 2, 1])
+    info, minutes_col, pomo_col, done_col = st.columns([6, 2, 1, 1])
     planned = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
     meeting = f" · 📝 from “{task['meeting']}”" if task["meeting"] else ""
-    info.markdown(f"⬜ **{task['title']}**  \n{task['priority']} · {task['tag']}{planned}{meeting}")
+    n_pomos, pomo_minutes = pomo_totals.get(tid, (0, 0))
+    pomos = f" · 🍅×{n_pomos} = {pomo_minutes} min" if n_pomos else ""
+    info.markdown(f"⬜ **{task['title']}**  \n{task['priority']} · {task['tag']}{planned}{meeting}{pomos}")
     if task["times_postponed"] >= 3:
         info.warning(f"Postponed {task['times_postponed']}x — break it down or drop it?")
+    # Pre-fill with Pomodoro minutes if you used the timer, else the plan.
+    # pomo_minutes is part of the key on purpose: Streamlit keeps a widget's
+    # current value and ignores a new value= once the key exists, so a new key
+    # is what makes the box pick up freshly logged Pomodoro time.
     actual = minutes_col.number_input(
         "Actual min", min_value=0, step=5,
-        value=task["planned_minutes"] or 0, key=f"today_actual_{tid}",
+        value=pomo_minutes or task["planned_minutes"] or 0, key=f"today_actual_{tid}_{pomo_minutes}",
     )
+    pomodoro.start_button(pomo_col, tid)
     if done_col.button("Done", key=f"today_done_{tid}"):
         db.complete_task(tid, actual_minutes=actual or None)
         st.rerun()

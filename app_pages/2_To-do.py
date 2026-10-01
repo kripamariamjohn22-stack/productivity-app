@@ -10,7 +10,7 @@ from datetime import date
 
 import streamlit as st
 
-from core import analytics, db
+from core import analytics, db, pomodoro
 
 st.set_page_config(page_title="To-do", layout="wide")
 db.init_db()  # in case this page is opened directly before the home page
@@ -72,13 +72,16 @@ if not open_tasks:
 
 TYPE_LABELS = {"task": "", "assignment": "📝 Assignment · ", "exam": "📖 Exam · "}
 
+pomo_totals = db.get_pomodoro_totals()  # {task_id: (count, minutes)}
 for task in open_tasks:
     # Every widget needs a unique key, otherwise Streamlit can't tell the
     # "Done" button of task 3 apart from the "Done" button of task 7.
     tid = task["id"]
-    info, minutes_col, done_col, drop_col = st.columns([6, 2, 1, 1])
+    info, minutes_col, pomo_col, done_col, drop_col = st.columns([6, 2, 1, 1, 1])
 
     planned_text = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
+    n_pomos, pomo_minutes = pomo_totals.get(tid, (0, 0))
+    planned_text += f" · 🍅×{n_pomos} = {pomo_minutes} min" if n_pomos else ""
     subject_text = f" · {task['subject']}" if task["subject"] else ""
     subject_text += f" · 📝 from “{task['meeting']}”" if task["meeting"] else ""
     days_left, when = analytics.countdown(task["due_date"])
@@ -98,11 +101,14 @@ for task in open_tasks:
     elif task["times_postponed"] > 0:
         info.caption(f"Postponed {task['times_postponed']}x")
 
-    # Pre-fill actual minutes with the plan, so if it matched you just click Done.
+    # Pre-fill actual minutes with your Pomodoro time if you used the timer,
+    # else the plan, so if it matched you just click Done.
     actual = minutes_col.number_input(
         "Actual min", min_value=0, step=5,
-        value=task["planned_minutes"] or 0, key=f"actual_{tid}",
+        value=pomo_minutes or task["planned_minutes"] or 0,
+        key=f"actual_{tid}_{pomo_minutes}",  # new key when Pomodoro time changes (see Today page)
     )
+    pomodoro.start_button(pomo_col, tid)
     if done_col.button("Done", key=f"done_{tid}"):
         db.complete_task(tid, actual_minutes=actual or None)
         st.rerun()  # redraw straight away so the task disappears from the list

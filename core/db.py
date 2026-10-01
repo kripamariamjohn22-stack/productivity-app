@@ -156,6 +156,19 @@ def init_db():
             logged_at  TEXT NOT NULL
         );
 
+        -- One row per Pomodoro. ended_at IS NULL = the timer is running.
+        -- Storing the START time (not a countdown) means closing the tab
+        -- loses nothing: elapsed time = now - started_at, whenever you look.
+        CREATE TABLE IF NOT EXISTS pomodoros (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id     INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            started_at  TEXT NOT NULL,
+            length      INTEGER NOT NULL,           -- planned minutes, e.g. 25
+            ended_at    TEXT,
+            minutes     INTEGER,                    -- minutes actually focused
+            completed   INTEGER NOT NULL DEFAULT 0  -- 1 = ran the full length
+        );
+
         -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
         -- (same numbering as Python's date.weekday()).
         CREATE TABLE IF NOT EXISTS timetable (
@@ -849,6 +862,70 @@ def save_mood(day, mood, energy, note=""):
     )
     conn.commit()
     conn.close()
+
+
+
+# ---------------------------------------------------------------------------
+# Pomodoro
+# ---------------------------------------------------------------------------
+
+POMODORO_MINUTES = 25
+
+
+def start_pomodoro(task_id, length=POMODORO_MINUTES):
+    """Start a timer for a task. Only one can run at a time: returns False
+    (and starts nothing) if another one is already running."""
+    if get_running_pomodoro():
+        return False
+    conn = get_connection()
+    conn.execute(
+        "INSERT INTO pomodoros (task_id, started_at, length) VALUES (?, ?, ?)",
+        (task_id, now_str(), length),
+    )
+    conn.commit()
+    conn.close()
+    return True
+
+
+def get_running_pomodoro():
+    """The running timer with its task title, or None."""
+    conn = get_connection()
+    row = conn.execute(
+        """SELECT p.*, t.title FROM pomodoros p JOIN tasks t ON t.id = p.task_id
+           WHERE p.ended_at IS NULL"""
+    ).fetchone()
+    conn.close()
+    return row
+
+
+def finish_pomodoro(pomodoro_id, minutes, completed):
+    conn = get_connection()
+    conn.execute(
+        "UPDATE pomodoros SET ended_at = ?, minutes = ?, completed = ? WHERE id = ?",
+        (now_str(), minutes, int(completed), pomodoro_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def cancel_pomodoro(pomodoro_id):
+    """Throw a timer away without logging any time."""
+    conn = get_connection()
+    conn.execute("DELETE FROM pomodoros WHERE id = ?", (pomodoro_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_pomodoro_totals():
+    """{task_id: (number of pomodoros, total minutes)} for finished pomodoros."""
+    conn = get_connection()
+    rows = conn.execute(
+        """SELECT task_id, COUNT(*) AS n, SUM(minutes) AS total
+           FROM pomodoros WHERE ended_at IS NOT NULL AND minutes > 0
+           GROUP BY task_id"""
+    ).fetchall()
+    conn.close()
+    return {r["task_id"]: (r["n"], r["total"]) for r in rows}
 
 
 if __name__ == "__main__":

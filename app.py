@@ -9,7 +9,7 @@ from file names), give them proper titles, and make Today the page you land on.
 
 import streamlit as st
 
-from core import db
+from core import db, pomodoro
 
 st.set_page_config(page_title="Productivity", layout="wide")
 
@@ -20,6 +20,9 @@ db.init_db()
 # Make it impossible to forget you're looking at a different database.
 if db.DB_PATH != db.DEFAULT_DB:
     st.sidebar.warning(f"Using **{db.DB_PATH.name}**, not your real data.")
+
+# The Pomodoro timer lives in the sidebar, so it's visible on every page.
+pomodoro.sidebar()
 
 page = st.navigation([
     st.Page("app_pages/1_Today.py", title="Today", icon="📅", default=True),
