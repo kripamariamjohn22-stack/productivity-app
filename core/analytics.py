@@ -160,3 +160,60 @@ def plan_vs_actual(tasks):
     )
     by_tag["ratio"] = by_tag["actual"] / by_tag["planned"]
     return weekly, by_tag.sort_values("ratio", ascending=False)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: postponements
+# ---------------------------------------------------------------------------
+
+def postponement_stats(tasks):
+    """What gets pushed to tomorrow, and what happens to it afterwards.
+
+    Only plain tasks count: assignments and exams never roll over, so they'd
+    make every tag look better than it is.
+    Returns a dict with:
+      share_postponed: fraction of tasks postponed at least once (0.0–1.0)
+      by_tag:  per tag -> tasks, average postponements, share postponed
+      by_title: per task title -> how often it appeared, total postponements,
+                how many are still open (titles you reuse, like "Gym", add up),
+                and open_postponed: postponements of the task that's open now
+      fate:    for tasks postponed 3+ times -> share done / dropped / still open
+    """
+    t = tasks[tasks["type"] == "task"].copy()
+    if t.empty:
+        return None
+    t["postponed"] = t["times_postponed"] > 0  # True/False column; .mean() of it = share
+
+    by_tag = t.groupby("tag").agg(
+        tasks=("id", "count"),
+        avg_postponed=("times_postponed", "mean"),
+        share_postponed=("postponed", "mean"),
+    ).sort_values("avg_postponed", ascending=False)
+
+    by_title = t.groupby("title").agg(
+        tag=("tag", "first"),
+        times=("id", "count"),
+        total_postponed=("times_postponed", "sum"),
+        still_open=("status", lambda s: (s == "todo").sum()),
+    )
+    # For the "break it down or drop it?" hint we need the CURRENT open task's
+    # count, not the title's lifetime total (13 old "Gym" tasks don't make
+    # today's one stuck). reindex lines it up with by_title; titles with no
+    # open task get NaN, which fillna turns into 0.
+    open_postponed = t[t["status"] == "todo"].groupby("title")["times_postponed"].max()
+    by_title["open_postponed"] = open_postponed.reindex(by_title.index).fillna(0).astype(int)
+    by_title = by_title[by_title["total_postponed"] > 0].sort_values(
+        ["total_postponed", "still_open"], ascending=False
+    )
+
+    stuck = t[t["times_postponed"] >= 3]
+    # value_counts(normalize=True) gives shares instead of counts, e.g. done: 0.7
+    fate = stuck["status"].value_counts(normalize=True).to_dict() if len(stuck) else {}
+
+    return {
+        "share_postponed": t["postponed"].mean(),
+        "by_tag": by_tag,
+        "by_title": by_title,
+        "fate": fate,
+        "stuck_count": len(stuck),
+    }

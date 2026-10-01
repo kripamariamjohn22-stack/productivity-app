@@ -88,7 +88,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | `app_pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `app_pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
 | `app_pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
-| `app_pages/7_Insights.py` | Insights: plan vs actual per tag (more during Phase 4) + CSV export of every table. |
+| `app_pages/7_Insights.py` | Insights: plan vs actual per tag, what gets postponed (more during Phase 4) + CSV export of every table. |
 | `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
 | `core/gcal.py` | Google login + reading a day's events (with attendees) into the database. Test with `python -m core.gcal`. |
@@ -110,7 +110,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 - [x] Phase 3 · Step 2 — action items become tasks
 - [x] Phase 4 · Step 1 — CSV export
 - [x] Phase 4 · Step 2 — plan vs actual (+ demo data)
-- [ ] Phase 4 · Step 3 — most-postponed tasks and tags
+- [x] Phase 4 · Step 3 — most-postponed tasks and tags
 - [ ] Phase 4 · Step 4 — habit vs task correlation
 - [ ] Phase 4 · Step 5 — best hours/days
 - [ ] Phase 4 · Step 6 — weekly review

@@ -83,6 +83,56 @@ else:
                "The current week is still in progress.")
 
 # ---------------------------------------------------------------------------
+# Postponements
+# ---------------------------------------------------------------------------
+st.subheader("What gets postponed")
+stats = analytics.postponement_stats(tasks)
+
+if stats is None or stats["by_title"].empty:
+    st.info("Nothing has been postponed yet. Unfinished tasks roll over each day, and they'll show up here.")
+else:
+    st.write(f"**{stats['share_postponed']:.0%}** of your tasks get postponed at least once.")
+    if stats["stuck_count"]:
+        fate = stats["fate"]
+        st.write(
+            f"Of the **{stats['stuck_count']}** tasks postponed 3+ times: "
+            f"{fate.get('done', 0):.0%} got done eventually, {fate.get('dropped', 0):.0%} were dropped, "
+            f"{fate.get('todo', 0):.0%} are still open."
+        )
+
+    left, right = st.columns([2, 3])
+    by_tag = stats["by_tag"].reset_index()  # reset_index turns the tag index back into a column
+    fig = px.bar(
+        by_tag, x="avg_postponed", y="tag", orientation="h",
+        text=by_tag["avg_postponed"].map("{:.1f}".format),  # value printed on each bar
+        color_discrete_sequence=[PLANNED_COLOR],  # one series = one colour, no legend needed
+        labels={"avg_postponed": "postponements per task", "tag": ""},
+        title="Average postponements per task", height=260,
+        custom_data=["tasks", "share_postponed"],
+    )
+    fig.update_traces(
+        hovertemplate="%{y}: %{x:.1f} per task<br>%{customdata[1]:.0%} of %{customdata[0]} tasks postponed<extra></extra>",
+        textposition="outside", cliponaxis=False,
+    )
+    fig.update_yaxes(categoryorder="total ascending")  # biggest at the top
+    fig.update_xaxes(gridcolor="rgba(137,135,129,0.25)")
+    fig.update_layout(margin=dict(l=0, r=30, t=40, b=0), bargap=0.35)
+    left.plotly_chart(fig, width="stretch")
+
+    top = stats["by_title"].head(10).reset_index()
+    # The spec's rule: the open task itself postponed 3+ times -> break it down or drop it?
+    top["suggestion"] = ["break it down or drop it?" if n >= 3 else "" for n in top["open_postponed"]]
+    right.markdown("**Most-postponed tasks**")
+    # Suggestion right after the name, so it's visible without scrolling the table sideways.
+    top = top[["title", "suggestion", "tag", "times", "total_postponed", "still_open"]]
+    right.dataframe(
+        top.rename(columns={
+            "title": "task", "times": "times added",
+            "total_postponed": "postponements", "still_open": "open now"}),
+        hide_index=True, width="stretch",
+    )
+
+# ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
 st.subheader("Export your data")
