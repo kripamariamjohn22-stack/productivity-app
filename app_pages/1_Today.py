@@ -105,7 +105,7 @@ for item in timeline:
             # Tell the Notes page which event to open, then go there.
             st.session_state["notes_date"] = today
             st.session_state["notes_event_id"] = item["event_id"]
-            st.switch_page("pages/6_Notes.py")
+            st.switch_page("app_pages/6_Notes.py")
 
     if slot:
         sid = slot["id"]

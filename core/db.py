@@ -6,6 +6,7 @@ Pages call simple functions like `add_task(...)` and don't care how
 the data is stored. If you ever change the database, you only touch this file.
 """
 
+import os
 import re
 import sqlite3
 from datetime import date, datetime
@@ -16,7 +17,17 @@ import pandas as pd
 # The database is a single file. Path(__file__) is this file (core/db.py),
 # so .parent.parent is the project root. This works no matter which folder
 # you run `streamlit run` from.
-DB_PATH = Path(__file__).resolve().parent.parent / "data" / "app.db"
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DB = ROOT / "data" / "app.db"
+
+# Optional switch to a different database file, e.g. the demo one:
+#   PRODUCTIVITY_DB=data/demo.db streamlit run app.py
+# An environment variable is a setting you give a program when you start it,
+# so trying the demo never touches your real data/app.db.
+if os.environ.get("PRODUCTIVITY_DB"):
+    DB_PATH = ROOT / os.environ["PRODUCTIVITY_DB"]  # relative paths start at the project folder
+else:
+    DB_PATH = DEFAULT_DB
 
 
 def get_connection():

@@ -51,6 +51,21 @@ differently, look for the closest match.
 The app notices and simply opens the browser login again. To stop this, go to **Audience → Publish app**
 (it stays private: only accounts that log in can use it, and you'll still see the "unverified" warning).
 
+## Trying the app with demo data
+
+Your real data lives in `data/app.db`. To look around with ~8 weeks of fake data instead:
+
+```bash
+python -m core.demo                                  # build data/demo.db (re-run any time to reset it)
+PRODUCTIVITY_DB=data/demo.db streamlit run app.py    # Mac / Linux
+```
+
+On Windows (PowerShell): `$env:PRODUCTIVITY_DB="data/demo.db"; streamlit run app.py`
+(then close that terminal, or run `Remove-Item Env:PRODUCTIVITY_DB`, to go back to your real data).
+
+A yellow note in the sidebar reminds you when you're not on your real data.
+A normal `streamlit run app.py` always uses `data/app.db`.
+
 ## Exploring your data in a notebook
 
 Download the zip from **📊 Insights → Export**, unzip it, then:
@@ -66,14 +81,15 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | File | What it's for |
 |------|---------------|
 | `app.py` | Entry point. Creates the database and lists the pages (Today opens first). |
-| `pages/` | One file per page. A new page must also be added to the list in `app.py`. |
-| `pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits. |
-| `pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings and countdowns. |
-| `pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
-| `pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
-| `pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
-| `pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
-| `pages/7_Insights.py` | Insights (charts arrive during Phase 4) + CSV export of every table. |
+| `app_pages/` | One file per page, listed in `app.py`. (Not called `pages/` on purpose: Streamlit treats a folder with that exact name specially and would skip `app.py`.) |
+| `app_pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits. |
+| `app_pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings and countdowns. |
+| `app_pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
+| `app_pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
+| `app_pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
+| `app_pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
+| `app_pages/7_Insights.py` | Insights: plan vs actual per tag (more during Phase 4) + CSV export of every table. |
+| `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
 | `core/gcal.py` | Google login + reading a day's events (with attendees) into the database. Test with `python -m core.gcal`. |
 | `core/analytics.py` | Number crunching: habit streaks, heatmap grid, attendance maths; insights in Phase 4. |
@@ -93,7 +109,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 - [x] Phase 3 · Step 1 — meeting notes page
 - [x] Phase 3 · Step 2 — action items become tasks
 - [x] Phase 4 · Step 1 — CSV export
-- [ ] Phase 4 · Step 2 — plan vs actual (+ demo data)
+- [x] Phase 4 · Step 2 — plan vs actual (+ demo data)
 - [ ] Phase 4 · Step 3 — most-postponed tasks and tags
 - [ ] Phase 4 · Step 4 — habit vs task correlation
 - [ ] Phase 4 · Step 5 — best hours/days

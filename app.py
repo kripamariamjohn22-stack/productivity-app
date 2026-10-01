@@ -17,13 +17,17 @@ st.set_page_config(page_title="Productivity", layout="wide")
 # It's cheap and safe to run on every reload ("IF NOT EXISTS").
 db.init_db()
 
+# Make it impossible to forget you're looking at a different database.
+if db.DB_PATH != db.DEFAULT_DB:
+    st.sidebar.warning(f"Using **{db.DB_PATH.name}**, not your real data.")
+
 page = st.navigation([
-    st.Page("pages/1_Today.py", title="Today", icon="📅", default=True),
-    st.Page("pages/2_To-do.py", title="To-do", icon="✅"),
-    st.Page("pages/3_Habits.py", title="Habits", icon="🔥"),
-    st.Page("pages/4_Attendance.py", title="Attendance", icon="🎓"),
-    st.Page("pages/5_Timetable.py", title="Timetable", icon="🗓️"),
-    st.Page("pages/6_Notes.py", title="Meeting notes", icon="📝"),
-    st.Page("pages/7_Insights.py", title="Insights", icon="📊"),
+    st.Page("app_pages/1_Today.py", title="Today", icon="📅", default=True),
+    st.Page("app_pages/2_To-do.py", title="To-do", icon="✅"),
+    st.Page("app_pages/3_Habits.py", title="Habits", icon="🔥"),
+    st.Page("app_pages/4_Attendance.py", title="Attendance", icon="🎓"),
+    st.Page("app_pages/5_Timetable.py", title="Timetable", icon="🗓️"),
+    st.Page("app_pages/6_Notes.py", title="Meeting notes", icon="📝"),
+    st.Page("app_pages/7_Insights.py", title="Insights", icon="📊"),
 ])
 page.run()

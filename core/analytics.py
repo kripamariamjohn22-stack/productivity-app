@@ -125,3 +125,38 @@ def countdown(due_date, today=None):
     if days == 1:
         return days, "tomorrow"
     return days, f"in {days} days"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: plan vs actual
+# ---------------------------------------------------------------------------
+
+def plan_vs_actual(tasks):
+    """Planned vs actual minutes per tag per week, from the tasks table.
+
+    Only finished tasks that have BOTH numbers count: comparing a task's plan
+    with "unknown" would make you look faster than you are.
+    Returns (weekly, by_tag):
+      weekly: one row per (week, tag) with planned and actual minute totals
+      by_tag: one row per tag with totals, task count and ratio = actual / planned
+    """
+    done = tasks[
+        (tasks["status"] == "done")
+        & tasks["planned_minutes"].notna()
+        & tasks["actual_minutes"].notna()
+    ].copy()  # .copy() so adding a column below doesn't warn about changing `tasks`
+
+    # Week = the Monday the task was finished in. to_period("W-SUN") means
+    # "weeks ending on Sunday"; .start_time gives that week's Monday.
+    done["week"] = pd.to_datetime(done["completed_at"]).dt.to_period("W-SUN").dt.start_time
+
+    weekly = (
+        done.groupby(["week", "tag"], as_index=False)[["planned_minutes", "actual_minutes"]].sum()
+    )
+    by_tag = done.groupby("tag").agg(
+        planned=("planned_minutes", "sum"),
+        actual=("actual_minutes", "sum"),
+        tasks=("id", "count"),
+    )
+    by_tag["ratio"] = by_tag["actual"] / by_tag["planned"]
+    return weekly, by_tag.sort_values("ratio", ascending=False)
