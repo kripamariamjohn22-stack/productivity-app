@@ -51,6 +51,16 @@ differently, look for the closest match.
 The app notices and simply opens the browser login again. To stop this, go to **Audience → Publish app**
 (it stays private: only accounts that log in can use it, and you'll still see the "unverified" warning).
 
+## Exploring your data in a notebook
+
+Download the zip from **📊 Insights → Export**, unzip it, then:
+
+```python
+import pandas as pd
+tasks = pd.read_csv("tasks.csv", parse_dates=["created_at", "completed_at"])
+tasks.groupby("tag")["actual_minutes"].sum()
+```
+
 ## What each file does
 
 | File | What it's for |
@@ -63,6 +73,7 @@ The app notices and simply opens the browser login again. To stop this, go to **
 | `pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
 | `pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
+| `pages/7_Insights.py` | Insights (charts arrive during Phase 4) + CSV export of every table. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
 | `core/gcal.py` | Google login + reading a day's events (with attendees) into the database. Test with `python -m core.gcal`. |
 | `core/analytics.py` | Number crunching: habit streaks, heatmap grid, attendance maths; insights in Phase 4. |
@@ -81,4 +92,9 @@ The app notices and simply opens the browser login again. To stop this, go to **
 - [x] Phase 2 · Step 3 — assignments & exams with countdowns
 - [x] Phase 3 · Step 1 — meeting notes page
 - [x] Phase 3 · Step 2 — action items become tasks
-- [ ] Phase 4 — insight engine
+- [x] Phase 4 · Step 1 — CSV export
+- [ ] Phase 4 · Step 2 — plan vs actual (+ demo data)
+- [ ] Phase 4 · Step 3 — most-postponed tasks and tags
+- [ ] Phase 4 · Step 4 — habit vs task correlation
+- [ ] Phase 4 · Step 5 — best hours/days
+- [ ] Phase 4 · Step 6 — weekly review

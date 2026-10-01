@@ -11,6 +11,8 @@ import sqlite3
 from datetime import date, datetime
 from pathlib import Path
 
+import pandas as pd
+
 # The database is a single file. Path(__file__) is this file (core/db.py),
 # so .parent.parent is the project root. This works no matter which folder
 # you run `streamlit run` from.
@@ -769,6 +771,36 @@ def get_recent_notes(limit=20):
     ).fetchall()
     conn.close()
     return rows
+
+
+
+# ---------------------------------------------------------------------------
+# Export (whole tables as pandas DataFrames)
+# ---------------------------------------------------------------------------
+
+def list_tables():
+    """Names of all our tables. sqlite_master is SQLite's own list of what's
+    in the file; names starting with sqlite_ are its internal bookkeeping."""
+    conn = get_connection()
+    names = [r["name"] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+    )]
+    conn.close()
+    return names
+
+
+def read_table(name):
+    """A whole table as a pandas DataFrame.
+
+    Table names can't be ? placeholders, so we only accept names that really
+    exist (from list_tables) and wrap them in "quotes" before using them in SQL.
+    """
+    if name not in list_tables():
+        raise ValueError(f"Unknown table: {name}")
+    conn = get_connection()
+    df = pd.read_sql_query(f'SELECT * FROM "{name}"', conn)
+    conn.close()
+    return df
 
 
 if __name__ == "__main__":
