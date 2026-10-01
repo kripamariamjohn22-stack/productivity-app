@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 from core import analytics, db
@@ -186,6 +187,41 @@ else:
         "could make you both read and finish tasks. Today isn't counted because it isn't over. "
         "p = how often randomly shuffled days give a gap at least this big."
     )
+
+# ---------------------------------------------------------------------------
+# When you finish tasks
+# ---------------------------------------------------------------------------
+st.subheader("When you get things done")
+MIN_FOR_TIMES = 20  # below this, a weekday × hour grid is mostly empty squares
+times = analytics.completion_times(tasks)
+
+if times is None or times["total"] < MIN_FOR_TIMES:
+    have = 0 if times is None else times["total"]
+    st.info(f"Needs at least {MIN_FOR_TIMES} finished tasks (you have {have}).")
+else:
+    per_day = times["per_weekday"]
+    start, share = times["best_window"]
+    st.write(f"Your best day is **{per_day.idxmax()}** ({per_day.max():.1f} tasks on average); "
+             f"the slowest is **{per_day.idxmin()}** ({per_day.min():.1f}).")
+    st.write(f"**{share:.0%}** of your tasks get done between **{start}:00 and {start + 2}:00**.")
+
+    grid = times["grid"]
+    # Hover text for every square, same shape as the grid.
+    hover = [[f"{day} {h}:00–{h + 1}:00: {grid.loc[day, h]} task(s)" for h in grid.columns]
+             for day in grid.index]
+    fig = go.Figure(go.Heatmap(
+        z=grid.values, x=[f"{h}:00" for h in grid.columns], y=list(grid.index),
+        customdata=hover, hovertemplate="%{customdata}<extra></extra>",
+        # Grey for 0, then light -> dark blue: "nothing" never looks like "a little".
+        colorscale=[[0, "#ecebe7"], [0.001, "#cde2fb"], [0.5, "#5598e7"], [1, "#104281"]],
+        xgap=2, ygap=2, colorbar=dict(title="tasks", thickness=12),
+    ))
+    fig.update_layout(height=300, margin=dict(l=0, r=0, t=10, b=0),
+                      yaxis=dict(autorange="reversed"))  # Monday on top
+    st.plotly_chart(fig, width="stretch")
+    st.caption("Times are when you clicked Done, not necessarily when you did the work. "
+               "Best/slowest day = average per Monday, per Tuesday, … so a weekday that appears "
+               "one extra time in your data isn't favoured.")
 
 # ---------------------------------------------------------------------------
 # Export

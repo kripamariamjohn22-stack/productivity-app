@@ -281,3 +281,46 @@ def habit_task_link(daily, habit, shuffles=2000, seed=0):
         "pct": (with_avg / without_avg - 1) * 100 if without_avg else None,
         "p_value": bigger / shuffles,
     }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: when you finish tasks
+# ---------------------------------------------------------------------------
+
+def completion_times(tasks):
+    """When tasks get marked done: weekday × hour counts and a few summaries.
+
+    Note: completed_at is when you clicked Done, not when you did the work.
+    Returns None if there are no finished tasks, else a dict with:
+      grid:        DataFrame, rows Mon..Sun, columns = hours, values = task counts
+      per_weekday: average tasks finished per Monday, per Tuesday, ...
+                   (count ÷ how many Mondays the data covers, so a weekday
+                   that happens to appear one extra time isn't favoured)
+      best_window: (start_hour, share) for the busiest 2-hour window
+      total:       number of finished tasks
+    """
+    times = pd.to_datetime(tasks.loc[tasks["status"] == "done", "completed_at"]).dropna()
+    if times.empty:
+        return None
+
+    # crosstab counts every (weekday, hour) pair: a ready-made 2D table.
+    grid = pd.crosstab(times.dt.dayofweek, times.dt.hour)
+    hours = range(times.dt.hour.min(), times.dt.hour.max() + 1)  # only the hours you're active
+    grid = grid.reindex(index=range(7), columns=hours, fill_value=0)
+    grid.index = WEEKDAYS
+
+    all_days = pd.date_range(times.min().normalize(), times.max().normalize(), freq="D")
+    weekdays_seen = pd.Series(all_days.dayofweek).value_counts().reindex(range(7), fill_value=0)
+    per_weekday = pd.Series(grid.sum(axis=1).to_numpy() / weekdays_seen.clip(lower=1).to_numpy(),
+                            index=WEEKDAYS)
+
+    # Busiest 2-hour window: add up each hour with the next one, pick the max.
+    per_hour = grid.sum(axis=0)
+    two_hour = per_hour + per_hour.shift(-1, fill_value=0)
+    start = int(two_hour.idxmax())
+    return {
+        "grid": grid,
+        "per_weekday": per_weekday,
+        "best_window": (start, two_hour.max() / len(times)),
+        "total": len(times),
+    }
