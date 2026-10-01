@@ -51,6 +51,24 @@ differently, look for the closest match.
 The app notices and simply opens the browser login again. To stop this, go to **Audience → Publish app**
 (it stays private: only accounts that log in can use it, and you'll still see the "unverified" warning).
 
+### Time blocks (Phase 5): what the app may change
+
+The app asks Google for two permissions:
+
+| Permission | What it allows |
+|---|---|
+| `calendar.readonly` | **Read** your calendars (Today page, meeting notes). Never changes them. |
+| `calendar.app.created` | Create **its own** calendar, "Productivity blocks", and add/remove events **only in calendars it created**. It cannot touch your main calendar. |
+
+- **First time after updating:** the app sees your old read-only login is missing the new permission
+  and opens the browser login once more. Google lists both permissions; click **Continue**.
+- **If Google says the request is denied:** in Google Cloud go to **Google Auth Platform → Data Access →
+  Add or remove scopes**, tick `.../auth/calendar.app.created`, save, and run the app again.
+- **To remove everything the app wrote:** in Google Calendar, Settings → "Productivity blocks" →
+  **Remove calendar → Delete**. (Removing single blocks: the 🗓️ button on the To-do page.)
+- **To take the permission back completely:** <https://myaccount.google.com/permissions> → your app → **Remove access**,
+  then delete `token.json`.
+
 ## Trying the app with demo data
 
 Your real data lives in `data/app.db`. To look around with ~8 weeks of fake data instead:
@@ -83,7 +101,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | `app.py` | Entry point. Creates the database and lists the pages (Today opens first). |
 | `app_pages/` | One file per page, listed in `app.py`. (Not called `pages/` on purpose: Streamlit treats a folder with that exact name specially and would skip `app.py`.) |
 | `app_pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits, mood/energy rating. |
-| `app_pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings and countdowns. |
+| `app_pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings, countdowns, 🍅 timer, 🗓️ time blocks. |
 | `app_pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
 | `app_pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `app_pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
@@ -93,7 +111,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | `core/pomodoro.py` | The 🍅 focus timer: start buttons on task rows, countdown in the sidebar on every page. |
 | `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
-| `core/gcal.py` | Google login + reading a day's events (with attendees) into the database. Test with `python -m core.gcal`. |
+| `core/gcal.py` | Google login, reading a day's events (with attendees), and writing time blocks to the app's own "Productivity blocks" calendar. Test with `python -m core.gcal`. |
 | `core/analytics.py` | Number crunching: habit streaks, heatmap grid, attendance maths; insights in Phase 4. |
 | `data/app.db` | The SQLite database. Created automatically. **Not in git.** |
 | `credentials.json` / `token.json` | Google login files. **Never commit these.** |
@@ -118,4 +136,4 @@ tasks.groupby("tag")["actual_minutes"].sum()
 - [x] Phase 4 · Step 6 — weekly review
 - [x] Phase 5 · Step 1 — daily mood/energy log
 - [x] Phase 5 · Step 2 — Pomodoro timer
-- [ ] Phase 5 · Step 3 — write time-blocked tasks to Google Calendar
+- [x] Phase 5 · Step 3 — write time-blocked tasks to Google Calendar

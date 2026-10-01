@@ -78,6 +78,15 @@ for c in classes:
         "slot": c,
         "event_id": None,
     })
+# Time blocks you put in Google Calendar from the To-do page.
+for blk in db.get_time_blocks(day=today):
+    timeline.append({
+        "start": datetime.fromisoformat(blk["start"]),
+        "end": datetime.fromisoformat(blk["end"]),
+        "title": f"🎯 {blk['title']}",
+        "slot": None,
+        "event_id": None,
+    })
 timeline.sort(key=lambda item: item["start"])
 
 now = datetime.now().astimezone()

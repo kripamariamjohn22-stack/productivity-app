@@ -11,6 +11,7 @@ Both files are secrets: they're in .gitignore and we never print them.
 Try it from the terminal:  python -m core.gcal
 """
 
+import json
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from core import db
 
@@ -26,10 +28,28 @@ ROOT = Path(__file__).resolve().parent.parent
 CREDENTIALS_PATH = ROOT / "credentials.json"
 TOKEN_PATH = ROOT / "token.json"
 
-# Read-only: the app can look at your calendar but cannot change anything.
-# If this list ever changes (Phase 5 = write access), delete token.json
-# so Google asks for the new permission.
-SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
+# What the app may do with your Google account:
+#   calendar.readonly    -> READ all your calendars (never change them)
+#   calendar.app.created -> create its OWN extra calendar ("Productivity blocks")
+#                           and add/edit/delete events in calendars it created.
+#                           It cannot touch your main calendar or any other one.
+# If this list changes, get_credentials() notices that token.json is missing a
+# permission and asks you to log in again.
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.app.created",
+]
+BLOCKS_CALENDAR_NAME = "Productivity blocks"
+
+
+def _token_has_all_scopes():
+    """True if the saved login already includes every permission in SCOPES.
+    token.json is JSON, and Google saves the granted scopes in it."""
+    try:
+        granted = set(json.loads(TOKEN_PATH.read_text()).get("scopes", []))
+    except (OSError, ValueError):
+        return False
+    return set(SCOPES) <= granted  # <= on sets means "is a subset of"
 
 
 def get_credentials():
@@ -41,6 +61,10 @@ def get_credentials():
         )
 
     creds = None
+    if TOKEN_PATH.exists() and not _token_has_all_scopes():
+        # Logged in before a permission was added (e.g. read-only from Phase 1):
+        # throw the old login away so Google asks for the new permission.
+        TOKEN_PATH.unlink()
     if TOKEN_PATH.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
 
@@ -91,9 +115,14 @@ def _parse_event(item):
     }
 
 
+def get_service():
+    """A Google Calendar API client, logged in. (Tests replace this with a fake.)"""
+    return build("calendar", "v3", credentials=get_credentials(), cache_discovery=False)
+
+
 def fetch_events(day):
     """Ask Google for every event on `day` in your primary calendar."""
-    service = build("calendar", "v3", credentials=get_credentials(), cache_discovery=False)
+    service = get_service()
     # .astimezone() attaches your computer's time zone, so "today" means
     # your midnight-to-midnight, not UTC's.
     start = datetime.combine(day, time.min).astimezone()
@@ -124,6 +153,65 @@ def sync_day(day=None):
     db.replace_events_for_day(day, events)
     db.set_setting("last_sync", db.now_str())
     return True, f"Synced {len(events)} event(s)."
+
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: time blocks (writing to Google Calendar)
+# ---------------------------------------------------------------------------
+
+def _blocks_calendar_id(service):
+    """Id of the app's own "Productivity blocks" calendar, creating it the first time.
+
+    The id is remembered in settings. If you deleted that calendar in Google,
+    calendars().get fails, and we simply create a new one.
+    """
+    calendar_id = db.get_setting("blocks_calendar_id")
+    if calendar_id:
+        try:
+            service.calendars().get(calendarId=calendar_id).execute()
+            return calendar_id
+        except HttpError:
+            pass  # gone (deleted in Google): make a fresh one below
+    created = service.calendars().insert(body={"summary": BLOCKS_CALENDAR_NAME}).execute()
+    db.set_setting("blocks_calendar_id", created["id"])
+    return created["id"]
+
+
+def create_block(task, start, minutes):
+    """Put a time block for `task` into the Productivity blocks calendar.
+
+    start: timezone-aware datetime. Returns (ok, message), like sync_day, so
+    the page can show an error instead of crashing.
+    """
+    end = start + timedelta(minutes=minutes)
+    try:
+        service = get_service()
+        calendar_id = _blocks_calendar_id(service)
+        event = service.events().insert(calendarId=calendar_id, body={
+            "summary": f"🎯 {task['title']}",
+            "description": "Time block created by your productivity app.",
+            "start": {"dateTime": start.isoformat()},
+            "end": {"dateTime": end.isoformat()},
+        }).execute()
+    except Exception as err:
+        return False, f"Couldn't create the block ({type(err).__name__}): {str(err).rstrip('.')}."
+    db.add_time_block(task["id"], calendar_id, event["id"], start, end)
+    return True, f"Blocked {start:%a %d %b %H:%M}–{end:%H:%M} for “{task['title']}”."
+
+
+def remove_block(block):
+    """Delete a block from Google Calendar and from the app.
+    If it's already gone in Google (deleted by hand), just forget it locally."""
+    try:
+        get_service().events().delete(calendarId=block["calendar_id"], eventId=block["event_id"]).execute()
+    except HttpError as err:
+        if err.resp.status not in (404, 410):  # 404/410 = already deleted: that's fine
+            return False, f"Couldn't remove the block: {err}"
+    except Exception as err:
+        return False, f"Couldn't remove the block ({type(err).__name__}): {err}"
+    db.delete_time_block(block["id"])
+    return True, "Block removed."
 
 
 if __name__ == "__main__":

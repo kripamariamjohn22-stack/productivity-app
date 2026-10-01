@@ -6,11 +6,11 @@ something. That's why there's no "event loop": each click = fresh run
 that reads the latest data from the database and redraws the page.
 """
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import streamlit as st
 
-from core import analytics, db, pomodoro
+from core import analytics, db, gcal, pomodoro
 
 st.set_page_config(page_title="To-do", layout="wide")
 db.init_db()  # in case this page is opened directly before the home page
@@ -21,6 +21,11 @@ if rolled:
     st.info(f"Rolled over {rolled} unfinished task(s) to today.")
 
 st.title("To-do")
+
+# Result of the last block/unblock click (saved before st.rerun, shown here).
+if "block_message" in st.session_state:
+    ok, message = st.session_state.pop("block_message")
+    (st.success if ok else st.error)(message)
 
 # ---------------------------------------------------------------------------
 # Add a task
@@ -77,7 +82,8 @@ for task in open_tasks:
     # Every widget needs a unique key, otherwise Streamlit can't tell the
     # "Done" button of task 3 apart from the "Done" button of task 7.
     tid = task["id"]
-    info, minutes_col, pomo_col, done_col, drop_col = st.columns([6, 2, 1, 1, 1])
+    # Wider columns for the text buttons (Done, Drop) than for the emoji ones.
+    info, minutes_col, pomo_col, block_col, done_col, drop_col = st.columns([5, 1.6, 0.8, 1, 1, 1])
 
     planned_text = f" · planned {task['planned_minutes']} min" if task["planned_minutes"] else ""
     n_pomos, pomo_minutes = pomo_totals.get(tid, (0, 0))
@@ -109,6 +115,34 @@ for task in open_tasks:
         key=f"actual_{tid}_{pomo_minutes}",  # new key when Pomodoro time changes (see Today page)
     )
     pomodoro.start_button(pomo_col, tid)
+
+    # 🗓️ Time block in Google Calendar. A popover is a small panel that opens
+    # on click, so the row stays compact.
+    blocks = db.get_time_blocks(task_id=tid)
+    with block_col.popover("🗓️" if not blocks else f"🗓️{len(blocks)}", help="Block time in Google Calendar"):
+        for blk in blocks:
+            start = datetime.fromisoformat(blk["start"])
+            end = datetime.fromisoformat(blk["end"])
+            text_c, remove_c = st.columns([3, 1])
+            text_c.write(f"🎯 {start:%a %d %b %H:%M}–{end:%H:%M}")
+            if remove_c.button("✖", key=f"unblock_{blk['id']}", help="Remove from Google Calendar"):
+                ok, message = gcal.remove_block(blk)
+                st.session_state["block_message"] = (ok, message)
+                st.rerun()
+        # Default: the task's due date (or today) at the next full hour.
+        next_hour = (datetime.now() + timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+        due = date.fromisoformat(task["due_date"]) if task["due_date"] else date.today()
+        day = st.date_input("Day", value=max(due, date.today()), key=f"block_day_{tid}")
+        at_time = st.time_input("Start", value=next_hour.time(), step=900, key=f"block_time_{tid}")
+        length = st.number_input("Minutes", min_value=15, step=15,
+                                 value=task["planned_minutes"] or 30, key=f"block_len_{tid}")
+        if st.button("Block time", key=f"block_{tid}", type="primary"):
+            # .astimezone() attaches your computer's time zone, so Google puts
+            # the block at YOUR 14:00, not 14:00 UTC.
+            start = datetime.combine(day, at_time).astimezone()
+            ok, message = gcal.create_block(task, start, int(length))
+            st.session_state["block_message"] = (ok, message)
+            st.rerun()
     if done_col.button("Done", key=f"done_{tid}"):
         db.complete_task(tid, actual_minutes=actual or None)
         st.rerun()  # redraw straight away so the task disappears from the list

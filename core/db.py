@@ -169,6 +169,18 @@ def init_db():
             completed   INTEGER NOT NULL DEFAULT 0  -- 1 = ran the full length
         );
 
+        -- Time blocks the app wrote to Google Calendar, so it can show and
+        -- remove them. Only ever in the app's own "Productivity blocks" calendar.
+        CREATE TABLE IF NOT EXISTS time_blocks (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id      INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            calendar_id  TEXT NOT NULL,
+            event_id     TEXT NOT NULL,
+            start        TEXT NOT NULL,   -- ISO datetime with time zone
+            "end"        TEXT NOT NULL,
+            created_at   TEXT NOT NULL
+        );
+
         -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
         -- (same numbering as Python's date.weekday()).
         CREATE TABLE IF NOT EXISTS timetable (
@@ -926,6 +938,47 @@ def get_pomodoro_totals():
     ).fetchall()
     conn.close()
     return {r["task_id"]: (r["n"], r["total"]) for r in rows}
+
+
+
+# ---------------------------------------------------------------------------
+# Time blocks
+# ---------------------------------------------------------------------------
+
+def add_time_block(task_id, calendar_id, event_id, start, end):
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO time_blocks (task_id, calendar_id, event_id, start, "end", created_at)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (task_id, calendar_id, event_id, start.isoformat(), end.isoformat(), now_str()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_time_block(block_id):
+    conn = get_connection()
+    conn.execute("DELETE FROM time_blocks WHERE id = ?", (block_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_time_blocks(task_id=None, day=None):
+    """Blocks for one task, or for one day (by start date), with the task title."""
+    # "WHERE 1 = 1" is always true; it just lets every filter below start with
+    # " AND ..." without checking whether it's the first one.
+    sql = """SELECT b.*, t.title FROM time_blocks b JOIN tasks t ON t.id = b.task_id WHERE 1 = 1"""
+    params = []
+    if task_id is not None:
+        sql += " AND b.task_id = ?"
+        params.append(task_id)
+    if day is not None:
+        sql += " AND substr(b.start, 1, 10) = ?"
+        params.append(day.isoformat())
+    conn = get_connection()
+    rows = conn.execute(sql + " ORDER BY b.start", params).fetchall()
+    conn.close()
+    return rows
 
 
 if __name__ == "__main__":
