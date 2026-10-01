@@ -144,6 +144,18 @@ def init_db():
             updated_at    TEXT NOT NULL
         );
 
+        -- Phase 5 ---------------------------------------------------------
+
+        -- One mood + energy rating per day (date is the key, so re-saving
+        -- the same day updates it instead of adding a second row).
+        CREATE TABLE IF NOT EXISTS mood_log (
+            date       TEXT PRIMARY KEY,
+            mood       INTEGER NOT NULL CHECK (mood BETWEEN 1 AND 5),
+            energy     INTEGER NOT NULL CHECK (energy BETWEEN 1 AND 5),
+            note       TEXT,
+            logged_at  TEXT NOT NULL
+        );
+
         -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
         -- (same numbering as Python's date.weekday()).
         CREATE TABLE IF NOT EXISTS timetable (
@@ -812,6 +824,31 @@ def read_table(name):
     df = pd.read_sql_query(f'SELECT * FROM "{name}"', conn)
     conn.close()
     return df
+
+
+
+# ---------------------------------------------------------------------------
+# Mood & energy
+# ---------------------------------------------------------------------------
+
+def get_mood(day):
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM mood_log WHERE date = ?", (day.isoformat(),)).fetchone()
+    conn.close()
+    return row
+
+
+def save_mood(day, mood, energy, note=""):
+    conn = get_connection()
+    conn.execute(
+        """INSERT INTO mood_log (date, mood, energy, note, logged_at) VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT (date) DO UPDATE SET
+               mood = excluded.mood, energy = excluded.energy,
+               note = excluded.note, logged_at = excluded.logged_at""",
+        (day.isoformat(), mood, energy, note or None, now_str()),
+    )
+    conn.commit()
+    conn.close()
 
 
 if __name__ == "__main__":

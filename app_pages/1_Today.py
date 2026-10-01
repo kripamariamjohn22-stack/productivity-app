@@ -205,3 +205,24 @@ for habit in habits:
             f"Only the minimum: {habit['minimum_version']}", value=is_min,
             key=f"today_min_{hid}", on_change=save_log, args=(hid,),
         )
+
+# ---------------------------------------------------------------------------
+# Mood & energy (one rating per day; saving again just updates it)
+# ---------------------------------------------------------------------------
+st.subheader("How's today?")
+MOOD_LABELS = {1: "😞 1", 2: "🙁 2", 3: "😐 3", 4: "🙂 4", 5: "😄 5"}
+ENERGY_LABELS = {1: "🪫 1", 2: "2", 3: "3", 4: "4", 5: "⚡ 5"}
+saved = db.get_mood(today)
+with st.form("mood"):
+    c1, c2 = st.columns(2)
+    mood = c1.select_slider("Mood", options=list(MOOD_LABELS), format_func=MOOD_LABELS.get,
+                            value=saved["mood"] if saved else 3)
+    energy = c2.select_slider("Energy", options=list(ENERGY_LABELS), format_func=ENERGY_LABELS.get,
+                              value=saved["energy"] if saved else 3)
+    note = st.text_input("Note (optional)", value=(saved["note"] or "") if saved else "",
+                         placeholder="slept badly, exam stress, great lab session…")
+    if st.form_submit_button("Save" if not saved else "Update"):
+        db.save_mood(today, mood, energy, note.strip())
+        st.rerun()
+if saved:
+    st.caption(f"Saved at {saved['logged_at'][11:16]}. You can update it any time today.")

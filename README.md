@@ -82,13 +82,13 @@ tasks.groupby("tag")["actual_minutes"].sum()
 |------|---------------|
 | `app.py` | Entry point. Creates the database and lists the pages (Today opens first). |
 | `app_pages/` | One file per page, listed in `app.py`. (Not called `pages/` on purpose: Streamlit treats a folder with that exact name specially and would skip `app.py`.) |
-| `app_pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits. |
+| `app_pages/1_Today.py` | Today: sync, timeline of events + classes, deadlines for the next 7 days, today's tasks and habits, mood/energy rating. |
 | `app_pages/2_To-do.py` | To-do list (tasks, assignments, exams): add, finish, drop, undo; postponement warnings and countdowns. |
 | `app_pages/3_Habits.py` | Habit check-in (full or minimum), weekly progress, streak, heatmap. |
 | `app_pages/4_Attendance.py` | Attendance per subject: log attended/missed, % and "can miss X / must attend Y". |
 | `app_pages/5_Timetable.py` | Weekly class schedule. Today's classes appear on the Today page with ✅/❌ buttons. |
 | `app_pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
-| `app_pages/7_Insights.py` | Insights: plan vs actual, what gets postponed, habits vs tasks, best hours/days + CSV export of every table. |
+| `app_pages/7_Insights.py` | Insights: plan vs actual, what gets postponed, habits vs tasks, mood/energy, best hours/days + CSV export of every table. |
 | `app_pages/8_Weekly_review.py` | Weekly review: done, skipped, time split and a top insight for any week. |
 | `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
@@ -115,3 +115,6 @@ tasks.groupby("tag")["actual_minutes"].sum()
 - [x] Phase 4 · Step 4 — habit vs task correlation
 - [x] Phase 4 · Step 5 — best hours/days
 - [x] Phase 4 · Step 6 — weekly review
+- [x] Phase 5 · Step 1 — daily mood/energy log
+- [ ] Phase 5 · Step 2 — Pomodoro timer
+- [ ] Phase 5 · Step 3 — write time-blocked tasks to Google Calendar

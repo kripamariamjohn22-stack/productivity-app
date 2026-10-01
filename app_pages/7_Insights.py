@@ -189,6 +189,65 @@ else:
     )
 
 # ---------------------------------------------------------------------------
+# Mood & energy
+# ---------------------------------------------------------------------------
+st.subheader("Mood and energy")
+MOOD_COLOR = "#4a3aa7"    # violet
+ENERGY_COLOR = "#eda100"  # yellow
+MIN_RATED_DAYS = 7
+
+mood_log = db.read_table("mood_log")
+rated, by_energy = analytics.mood_vs_tasks(daily, mood_log)
+
+if len(rated) < MIN_RATED_DAYS:
+    st.info(f"Rate your mood and energy on the Today page. This needs {MIN_RATED_DAYS}+ rated days "
+            f"(you have {len(rated)}; today counts from tomorrow, once the day is over).")
+else:
+    r = analytics.habit_task_link(rated, analytics.HIGH_ENERGY)
+    if r["enough"]:
+        more_or_fewer = "more" if r["pct"] >= 0 else "fewer"
+        sentence = (f"On high-energy days (4–5) you finished **{abs(r['pct']):.0f}% {more_or_fewer}** tasks "
+                    f"({r['with_avg']:.1f} vs {r['without_avg']:.1f} per day; "
+                    f"{r['n_with']} vs {r['n_without']} days).")
+        if r["p_value"] < 0.05:
+            st.write(f"{sentence} Unlikely to be chance (p = {r['p_value']:.2f}).")
+        else:
+            st.write(f"{sentence} Could easily be chance (p = {r['p_value']:.2f}): keep rating your days.")
+
+    left, right = st.columns(2)
+    # Left: mood and energy over time. Daily ratings jump around a lot, so we
+    # plot a 7-day rolling average: each point = mean of that day and the 6
+    # before it ("7D" = calendar days, so skipped days don't stretch the window).
+    smooth = rated[["mood", "energy"]].rolling("7D", min_periods=3).mean().dropna()
+    trend = smooth.reset_index(names="day").melt(
+        id_vars="day", value_vars=["mood", "energy"], var_name="rating", value_name="score")
+    fig = px.line(
+        trend, x="day", y="score", color="rating",
+        color_discrete_map={"mood": MOOD_COLOR, "energy": ENERGY_COLOR},
+        labels={"day": "", "score": "", "rating": ""}, title="Mood and energy (7-day average)", height=300,
+    )
+    fig.update_traces(line_width=2,
+                      hovertemplate="Week to %{x|%a %d %b}: %{y:.1f}<extra>%{fullData.name}</extra>")
+    fig.update_yaxes(range=[0.5, 5.5], dtick=1, gridcolor="rgba(137,135,129,0.25)")
+    fig.update_xaxes(showgrid=False, tickformat="%d %b")
+    fig.update_layout(legend=dict(orientation="h", y=1.12, x=0), margin=dict(t=60, l=0, r=0))
+    left.plotly_chart(fig, width="stretch")
+
+    # Right: average tasks finished at each energy level.
+    fig = px.bar(
+        by_energy, x="energy", y="avg", color_discrete_sequence=[PLANNED_COLOR],
+        labels={"energy": "energy that day", "avg": "tasks finished per day"},
+        title="Tasks finished by energy level", height=300, custom_data=["days"],
+    )
+    fig.update_traces(hovertemplate="Energy %{x}: %{y:.1f} tasks/day over %{customdata[0]} days<extra></extra>")
+    fig.update_xaxes(dtick=1)
+    fig.update_yaxes(gridcolor="rgba(137,135,129,0.25)")
+    fig.update_layout(margin=dict(t=60, l=0, r=0), bargap=0.35)
+    right.plotly_chart(fig, width="stretch")
+    st.caption("Only days you rated count: a skipped rating isn't a low one. "
+               "As with habits, this shows what happens together, not what causes what.")
+
+# ---------------------------------------------------------------------------
 # When you finish tasks
 # ---------------------------------------------------------------------------
 st.subheader("When you get things done")

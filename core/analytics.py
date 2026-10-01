@@ -417,3 +417,30 @@ def week_insights(review, daily):
         found.append(f"On days you did **{habit}**, you finished **{r['pct']:.0f}% more** tasks "
                      f"(so far, unlikely to be chance).")
     return found
+
+
+# ---------------------------------------------------------------------------
+# Phase 5: mood & energy
+# ---------------------------------------------------------------------------
+
+HIGH_ENERGY = "energy 4–5"
+
+
+def mood_vs_tasks(daily, mood_log):
+    """Join each day's mood/energy rating onto the daily table.
+
+    Only days you actually rated are kept: a missing rating isn't a "low"
+    rating, so guessing one would bias the result.
+    Returns (rated, by_energy):
+      rated:     daily rows that have a rating, plus mood, energy and a
+                 True/False HIGH_ENERGY column (ready for habit_task_link)
+      by_energy: per energy level 1–5 -> average tasks finished, number of days
+    """
+    if daily.empty or mood_log.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    ratings = mood_log.assign(date=pd.to_datetime(mood_log["date"])).set_index("date")[["mood", "energy"]]
+    # join() matches rows by index (the date); how="inner" keeps only dates in both.
+    rated = daily[["tasks_done"]].join(ratings, how="inner")
+    rated[HIGH_ENERGY] = rated["energy"] >= 4
+    by_energy = rated.groupby("energy")["tasks_done"].agg(avg="mean", days="count").reset_index()
+    return rated, by_energy

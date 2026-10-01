@@ -13,6 +13,7 @@ something to find (and you can check the charts find the RIGHT thing):
   - research tasks get postponed the most
   - on "good days" you do more habits AND finish more tasks
   - most tasks get finished late morning or late evening; Sundays are slow
+  - mood and energy are higher on good days (so they track tasks too)
 """
 
 import random
@@ -64,6 +65,15 @@ def build():
         # That shared cause is exactly what the correlation insight should spot.
         good_day = random.random() < 0.6
         slow_sunday = day.weekday() == 6
+
+        # Mood/energy: skipped on ~15% of days (real people forget too).
+        if random.random() < 0.85:
+            energy = random.choice([3, 4, 4, 5, 5]) if good_day else random.choice([1, 2, 2, 3, 3])
+            mood = max(1, min(5, energy + random.choice([-1, 0, 0, 1])))
+            conn.execute(
+                "INSERT INTO mood_log (date, mood, energy, logged_at) VALUES (?, ?, ?, ?)",
+                (day.isoformat(), mood, energy, f"{day} 21:00:00"),
+            )
 
         for habit in habits:
             if random.random() < (0.8 if good_day else 0.35):
