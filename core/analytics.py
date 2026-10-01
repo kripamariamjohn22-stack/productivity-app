@@ -7,6 +7,7 @@ data in and give plain data back, which makes them easy to test on their own.
 
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 
 WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -216,4 +217,67 @@ def postponement_stats(tasks):
         "by_title": by_title,
         "fate": fate,
         "stuck_count": len(stuck),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Phase 4: habits vs tasks
+# ---------------------------------------------------------------------------
+
+def daily_table(tasks, habit_logs, habits, today=None):
+    """One row per day: how many tasks you finished, and True/False per habit.
+
+    Starts at the first day with any data and stops YESTERDAY: today isn't
+    over, so counting it would make today look like a bad day.
+    """
+    today = today or date.today()
+    done_days = pd.to_datetime(tasks.loc[tasks["status"] == "done", "completed_at"]).dt.normalize()
+    log_days = pd.to_datetime(habit_logs["date"])
+    if done_days.empty and log_days.empty:
+        return pd.DataFrame()
+
+    first = min(d.min() for d in (done_days, log_days) if not d.empty)
+    days = pd.date_range(first, pd.Timestamp(today) - pd.Timedelta(days=1), freq="D")
+    daily = pd.DataFrame(index=days)
+    # value_counts counts tasks per day; reindex fills days with none as 0.
+    daily["tasks_done"] = done_days.value_counts().reindex(days, fill_value=0)
+
+    for _, habit in habits.iterrows():
+        habit_days = set(log_days[habit_logs["habit_id"] == habit["id"]])
+        daily[habit["name"]] = daily.index.isin(habit_days)
+    return daily
+
+
+def habit_task_link(daily, habit, shuffles=2000, seed=0):
+    """Compare tasks finished on days you did `habit` vs days you didn't.
+
+    p_value: the share of random shuffles that give a gap at least this big.
+    Idea: if the habit had nothing to do with it, then which days are
+    "habit days" is just a label, and shuffling the labels should often
+    produce gaps as big as the real one. Small p_value (< 0.05) = the real
+    gap is rare by chance. It still doesn't prove the habit CAUSES it.
+    """
+    did = daily[habit].to_numpy()
+    tasks_done = daily["tasks_done"].to_numpy()
+    n_with, n_without = int(did.sum()), int((~did).sum())
+    if n_with < 5 or n_without < 5:
+        return {"enough": False, "n_with": n_with, "n_without": n_without}
+
+    with_avg = tasks_done[did].mean()
+    without_avg = tasks_done[~did].mean()
+    real_gap = abs(with_avg - without_avg)
+
+    rng = np.random.default_rng(seed)  # fixed seed = same answer every time you reload
+    bigger = 0
+    for _ in range(shuffles):
+        fake = rng.permutation(did)  # same number of habit days, randomly placed
+        if abs(tasks_done[fake].mean() - tasks_done[~fake].mean()) >= real_gap:
+            bigger += 1
+
+    return {
+        "enough": True,
+        "n_with": n_with, "n_without": n_without,
+        "with_avg": with_avg, "without_avg": without_avg,
+        "pct": (with_avg / without_avg - 1) * 100 if without_avg else None,
+        "p_value": bigger / shuffles,
     }

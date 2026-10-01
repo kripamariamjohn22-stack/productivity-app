@@ -130,6 +130,61 @@ else:
             "title": "task", "times": "times added",
             "total_postponed": "postponements", "still_open": "open now"}),
         hide_index=True, width="stretch",
+        column_config={"suggestion": st.column_config.TextColumn(width="medium")},  # room for the full hint
+    )
+
+# ---------------------------------------------------------------------------
+# Habits vs tasks
+# ---------------------------------------------------------------------------
+st.subheader("Habits and getting things done")
+HABIT_DONE_COLOR = "#1baf7a"  # aqua: did the habit
+HABIT_SKIPPED_COLOR = "#b5b3ad"  # neutral grey: didn't
+
+habits_df = db.read_table("habits")
+habits_df = habits_df[habits_df["active"] == 1]
+daily = analytics.daily_table(tasks, db.read_table("habit_logs"), habits_df)
+
+if daily.empty:
+    st.info("No finished tasks or habit check-ins yet.")
+else:
+    chart_rows = []
+    for habit in habits_df["name"]:
+        r = analytics.habit_task_link(daily, habit)
+        if not r["enough"]:
+            st.write(f"**{habit}**: not enough data yet. Need 5+ days with it and 5+ without "
+                     f"(have {r['n_with']} and {r['n_without']}).")
+            continue
+        more_or_fewer = "more" if r["pct"] >= 0 else "fewer"
+        sentence = (f"On days you did **{habit}**, you finished **{abs(r['pct']):.0f}% {more_or_fewer}** tasks "
+                    f"({r['with_avg']:.1f} vs {r['without_avg']:.1f} per day; "
+                    f"{r['n_with']} days with, {r['n_without']} without).")
+        if r["p_value"] < 0.05:
+            st.write(f"{sentence} A gap this big is unlikely to be chance (p = {r['p_value']:.2f}).")
+        else:
+            st.write(f"{sentence} But this could easily be chance (p = {r['p_value']:.2f}): keep collecting data.")
+        chart_rows += [
+            {"habit": habit, "day": "did it", "tasks": r["with_avg"], "days": r["n_with"]},
+            {"habit": habit, "day": "didn't", "tasks": r["without_avg"], "days": r["n_without"]},
+        ]
+
+    if chart_rows:
+        fig = px.bar(
+            pd.DataFrame(chart_rows), x="habit", y="tasks", color="day", barmode="group",
+            color_discrete_map={"did it": HABIT_DONE_COLOR, "didn't": HABIT_SKIPPED_COLOR},
+            category_orders={"day": ["did it", "didn't"]},
+            labels={"habit": "", "tasks": "tasks finished per day", "day": ""},
+            custom_data=["days"], height=330,
+        )
+        fig.update_traces(hovertemplate="%{x}<br>%{y:.1f} tasks/day over %{customdata[0]} days<extra>%{fullData.name}</extra>")
+        fig.update_layout(bargap=0.35, bargroupgap=0.08, legend=dict(orientation="h", y=1.12, x=0),
+                          margin=dict(t=40))
+        fig.update_yaxes(gridcolor="rgba(137,135,129,0.25)")
+        st.plotly_chart(fig, width="stretch")
+
+    st.caption(
+        "This shows what happens *together*, not what *causes* what. A good night's sleep "
+        "could make you both read and finish tasks. Today isn't counted because it isn't over. "
+        "p = how often randomly shuffled days give a gap at least this big."
     )
 
 # ---------------------------------------------------------------------------
