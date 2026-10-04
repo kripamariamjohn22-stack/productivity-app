@@ -110,6 +110,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | `app_pages/8_Weekly_review.py` | Weekly review: done, skipped, time split and a top insight for any week. |
 | `app_pages/9_Winter_arc.py` | Winter arc challenge: 9 daily goals with a score out of 9, good-day streak, month grid, book progress and a log of things learned. Dates and book are set on the page. |
 | `core/pomodoro.py` | The 🍅 focus timer: start buttons on task rows, countdown in the sidebar on every page. |
+| `core/october_plan.py` | Loads the Winter Arc October plan once: finish-line tasks with due dates + weekly habits. Run `python -m core.october_plan`; running it again adds nothing twice. |
 | `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
 | `core/gcal.py` | Google login, reading a day's events (with attendees), and writing time blocks to the app's own "Productivity blocks" calendar. Test with `python -m core.gcal`. |
