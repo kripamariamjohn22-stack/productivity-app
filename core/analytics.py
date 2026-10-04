@@ -444,3 +444,62 @@ def mood_vs_tasks(daily, mood_log):
     rated[HIGH_ENERGY] = rated["energy"] >= 4
     by_energy = rated.groupby("energy")["tasks_done"].agg(avg="mean", days="count").reset_index()
     return rated, by_energy
+
+
+
+# ---------------------------------------------------------------------------
+# Winter arc
+# ---------------------------------------------------------------------------
+
+FLAWLESS_ITEMS = ["skin", "hair", "face", "outfit", "shoes", "scent"]
+WATER_GOAL = 10      # glasses of 250 ml = 2.5 L
+GOOD_DAY = 7         # out of 9
+
+
+def winter_arc_checks(row, daily_pages):
+    """Which of the 9 daily goals one day hit, as {goal: True/False}.
+    `row` is anything you can index by column name (a sqlite Row, a dict,
+    a pandas row). Missing numbers (None/NaN) count as not done."""
+    def num(key):
+        value = row[key]
+        return None if value is None or pd.isna(value) else value
+
+    screen = num("screen_hours")
+    return {
+        "Steps": (num("steps") or 0) >= 10_000,
+        "Flawless": all(bool(row[item]) for item in FLAWLESS_ITEMS),
+        "Sleep": bool(row["slept_on_time"]),
+        "Reading": (num("pages") or 0) >= daily_pages,
+        "New fact": bool((row["fact"] or "").strip()),
+        "Matiks": bool(row["matiks"]),
+        "Screen time": screen is not None and screen < 5,
+        "Water": (num("water_glasses") or 0) >= WATER_GOAL,
+        "Career": bool(row["career"]),
+    }
+
+
+def winter_arc_scores(df, daily_pages):
+    """{date: score out of 9} for every logged day in the DataFrame."""
+    return {
+        date.fromisoformat(r["date"]): sum(winter_arc_checks(r, daily_pages).values())
+        for _, r in df.iterrows()
+    }
+
+
+def winter_arc_streak(scores, start, today=None):
+    """Good days (7+/9) in a row, ending today. Today only counts once it's
+    good, but an unfinished today doesn't break the streak (same rule as habits)."""
+    today = today or date.today()
+    day = today if scores.get(today, 0) >= GOOD_DAY else today - timedelta(days=1)
+    streak = 0
+    while day >= start and scores.get(day, 0) >= GOOD_DAY:
+        streak += 1
+        day -= timedelta(days=1)
+    return streak
+
+
+def book_pace(pages_read, total_pages, today, end):
+    """Pages left and pages per day needed to finish by `end` (today included)."""
+    left = max(total_pages - pages_read, 0)
+    days_left = max((end - today).days + 1, 1)
+    return left, -(-left // days_left)   # -(-a // b) rounds up without importing math

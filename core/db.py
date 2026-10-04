@@ -181,6 +181,33 @@ def init_db():
             created_at   TEXT NOT NULL
         );
 
+        -- Winter arc --------------------------------------------------------
+
+        -- One row per day of the winter arc challenge (date is the key, so
+        -- re-saving a day updates it, same idea as mood_log).
+        -- The six "flawless" columns are separate 0/1 columns instead of one
+        -- text field, so they're easy to analyse in pandas later.
+        CREATE TABLE IF NOT EXISTS winter_arc (
+            date           TEXT PRIMARY KEY,     -- 'YYYY-MM-DD'
+            steps          INTEGER,
+            skin           INTEGER NOT NULL DEFAULT 0,   -- skincare + SPF
+            hair           INTEGER NOT NULL DEFAULT 0,
+            face           INTEGER NOT NULL DEFAULT 0,   -- face basics
+            outfit         INTEGER NOT NULL DEFAULT 0,   -- outfit planned
+            shoes          INTEGER NOT NULL DEFAULT 0,   -- clean shoes
+            scent          INTEGER NOT NULL DEFAULT 0,
+            slept_on_time  INTEGER NOT NULL DEFAULT 0,   -- asleep by 11:30 (12 max)
+            pages          INTEGER,                      -- pages of this month's book
+            fact           TEXT NOT NULL DEFAULT '',     -- one new thing learned
+            fact_source    TEXT NOT NULL DEFAULT '',
+            fact_category  TEXT NOT NULL DEFAULT '',
+            matiks         INTEGER NOT NULL DEFAULT 0,
+            screen_hours   REAL,                         -- phone screen time
+            water_glasses  INTEGER NOT NULL DEFAULT 0,   -- 250 ml each
+            career         INTEGER NOT NULL DEFAULT 0,   -- 1 hour on SQL/Python/project
+            updated_at     TEXT NOT NULL
+        );
+
         -- Weekly class schedule. weekday: 0 = Monday ... 6 = Sunday
         -- (same numbering as Python's date.weekday()).
         CREATE TABLE IF NOT EXISTS timetable (
@@ -979,6 +1006,75 @@ def get_time_blocks(task_id=None, day=None):
     rows = conn.execute(sql + " ORDER BY b.start", params).fetchall()
     conn.close()
     return rows
+
+
+# ---------------------------------------------------------------------------
+# Winter arc
+# ---------------------------------------------------------------------------
+
+WINTER_ARC_FIELDS = [
+    "steps", "skin", "hair", "face", "outfit", "shoes", "scent", "slept_on_time",
+    "pages", "fact", "fact_source", "fact_category", "matiks", "screen_hours",
+    "water_glasses", "career",
+]
+
+# Settings live in the existing key/value `settings` table, so changing the
+# book or the dates next month needs no database change.
+WINTER_ARC_DEFAULTS = {
+    "arc_start": "2026-10-05",
+    "arc_end": "2026-10-31",
+    "arc_book_title": "The Body",
+    "arc_book_author": "Bill Bryson",
+    "arc_book_pages": "450",
+    "arc_daily_pages": "17",
+}
+
+
+def get_winter_arc_settings():
+    """All winter arc settings as a dict of strings (defaults filled in)."""
+    return {key: get_setting(key, default) for key, default in WINTER_ARC_DEFAULTS.items()}
+
+
+def get_winter_arc_day(day):
+    """One day's row, or None if nothing was logged yet."""
+    conn = get_connection()
+    row = conn.execute("SELECT * FROM winter_arc WHERE date = ?", (day.isoformat(),)).fetchone()
+    conn.close()
+    return row
+
+
+def save_winter_arc_day(day, values):
+    """Create or update one day. `values` is a dict with the WINTER_ARC_FIELDS keys.
+
+    The column names come from our own WINTER_ARC_FIELDS list (never from user
+    input), so building them into the SQL text is safe. The VALUES still go
+    through :placeholders.
+    """
+    cols = ", ".join(WINTER_ARC_FIELDS)
+    params = ", ".join(f":{f}" for f in WINTER_ARC_FIELDS)
+    updates = ", ".join(f"{f} = excluded.{f}" for f in WINTER_ARC_FIELDS)
+    conn = get_connection()
+    conn.execute(
+        f"""INSERT INTO winter_arc (date, {cols}, updated_at)
+            VALUES (:date, {params}, :updated_at)
+            ON CONFLICT (date) DO UPDATE SET {updates}, updated_at = excluded.updated_at""",
+        {**{f: values.get(f) for f in WINTER_ARC_FIELDS},
+         "date": day.isoformat(), "updated_at": now_str()},
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_winter_arc_range(start, end):
+    """Every logged day between start and end (inclusive), as a DataFrame."""
+    conn = get_connection()
+    df = pd.read_sql_query(
+        "SELECT * FROM winter_arc WHERE date BETWEEN ? AND ? ORDER BY date",
+        conn, params=(start.isoformat(), end.isoformat()),
+    )
+    conn.close()
+    return df
+
 
 
 if __name__ == "__main__":

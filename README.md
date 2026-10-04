@@ -108,6 +108,7 @@ tasks.groupby("tag")["actual_minutes"].sum()
 | `app_pages/6_Notes.py` | Meeting notes per calendar event: Agenda / Notes / Decisions / Action items (each action item becomes a task). |
 | `app_pages/7_Insights.py` | Insights: plan vs actual, what gets postponed, habits vs tasks, mood/energy, best hours/days + CSV export of every table. |
 | `app_pages/8_Weekly_review.py` | Weekly review: done, skipped, time split and a top insight for any week. |
+| `app_pages/9_Winter_arc.py` | Winter arc challenge: 9 daily goals with a score out of 9, good-day streak, month grid, book progress and a log of things learned. Dates and book are set on the page. |
 | `core/pomodoro.py` | The 🍅 focus timer: start buttons on task rows, countdown in the sidebar on every page. |
 | `core/demo.py` | Builds `data/demo.db` with ~8 weeks of fake data so the charts have something to show. |
 | `core/db.py` | All database code: creating tables, migrations (changes to existing tables), reading/writing data. |
@@ -137,3 +138,4 @@ tasks.groupby("tag")["actual_minutes"].sum()
 - [x] Phase 5 · Step 1 — daily mood/energy log
 - [x] Phase 5 · Step 2 — Pomodoro timer
 - [x] Phase 5 · Step 3 — write time-blocked tasks to Google Calendar
+- [x] Winter arc — October challenge page (9 daily goals, streak, book, facts log)
